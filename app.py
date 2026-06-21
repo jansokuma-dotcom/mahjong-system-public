@@ -1,4 +1,5 @@
 import datetime
+import io
 import math
 import os
 import pandas as pd
@@ -6,9 +7,9 @@ import plotly.express as px
 import streamlit as st
 from streamlit_cookies_controller import CookieController
 
+# ネット（Secrets）保存用のダミーファイルパス
 EXCEL_FILE = "mahjong_system.xlsx"
 
-# 画面の基本設定
 st.set_page_config(page_title="雀荘レーティング＆成績管理", layout="centered")
 
 # クッキーコントローラーの初期化
@@ -22,15 +23,30 @@ if "cookies_initialized" not in st.session_state:
 
 
 def load_data():
-    """Excelからデータを安全に読み込む"""
-    df_g = pd.read_excel(EXCEL_FILE, sheet_name="対局入力")
-    df_m = pd.read_excel(EXCEL_FILE, sheet_name="メンバーマスタ")
-    try:
-        df_l = pd.read_excel(EXCEL_FILE, sheet_name="ログインログ")
-    except Exception:
-        df_l = pd.DataFrame(columns=["閲覧日時", "ログインID", "名前"])
+    """SecretsまたはローカルのExcelからデータを安全に読み込む"""
+    # ネット公開（Streamlit Cloud）環境の場合、Secretsのテキストデータを読み込む
+    if "data" in st.secrets:
+        import io
 
-    # 列の存在チェックと初期化
+        g_csv = st.secrets["data"]["games"]
+        m_csv = st.secrets["data"]["members"]
+        l_csv = st.secrets["data"]["logs"]
+
+        df_g = pd.read_csv(io.StringIO(g_csv.strip()))
+        df_m = pd.read_csv(io.StringIO(m_csv.strip()))
+        try:
+            df_l = pd.read_csv(io.StringIO(l_csv.strip()))
+        except Exception:
+            df_l = pd.DataFrame(columns=["閲覧日時", "ログインID", "名前"])
+    else:
+        # ローカル環境のバックアップ用（実物のExcelを読み込む）
+        df_g = pd.read_excel(EXCEL_FILE, sheet_name="対局入力")
+        df_m = pd.read_excel(EXCEL_FILE, sheet_name="メンバーマスタ")
+        try:
+            df_l = pd.read_excel(EXCEL_FILE, sheet_name="ログインログ")
+        except Exception:
+            df_l = pd.DataFrame(columns=["閲覧日時", "ログインID", "名前"])
+
     if "初期レート" not in df_m.columns:
         df_m["初期レート"] = 1500.0
     if "現在のレート" not in df_m.columns:
@@ -40,13 +56,21 @@ def load_data():
 
 
 def save_excel(df_g, df_m, df_l):
-    """Excelへデータを安全に上書き保存する"""
-    with pd.ExcelWriter(
-        EXCEL_FILE, mode="a", engine="openpyxl", if_sheet_exists="replace"
-    ) as w:
-        df_g.to_excel(w, sheet_name="対局入力", index=False)
-        df_m.to_excel(w, sheet_name="メンバーマスタ", index=False)
-        df_l.to_excel(w, sheet_name="ログインログ", index=False)
+    """データを保存する（ネット環境では画面へ一時反映、ローカルではExcelへ保存）"""
+    if "data" in st.secrets:
+        # ネット上では、入力されたデータを即座に画面へ反映させるためにデータを一時保持
+        st.session_state["temporary_df_games"] = df_g
+        st.session_state["temporary_df_members"] = df_m
+        st.session_state["temporary_df_logs"] = df_l
+    else:
+        # ローカル環境（お店のパソコン）では通常通りExcelを上書きする
+        with pd.ExcelWriter(
+            EXCEL_FILE, mode="a", engine="openpyxl", if_sheet_exists="replace"
+        ) as w:
+            df_g.to_excel(w, sheet_name="対局入力", index=False)
+            df_m.to_excel(w, sheet_name="メンバーマスタ", index=False)
+            df_l.to_excel(w, sheet_name="ログインログ", index=False)
+
 
 
 def calculate_all_ratings(df_g, df_m):
