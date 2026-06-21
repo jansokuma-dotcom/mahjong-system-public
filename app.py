@@ -1,4 +1,5 @@
 import datetime
+import io
 import math
 import os
 import pandas as pd
@@ -22,27 +23,42 @@ if "cookies_initialized" not in st.session_state:
 
 
 def get_dan_name(rating):
-    """レーティングの数値から、自動で段位（動物名）を返す（画像は削除）"""
-    if rating <= 1349: return "ナマケモノ級"
-    elif rating <= 1449: return "アライグマ級"
-    elif rating <= 1549: return "マレーグマ級"
-    elif rating <= 1649: return "ジャイアントパンダ級"
-    elif rating <= 1749: return "メガネグマ級"
-    elif rating <= 1849: return "ナマケグマ級"
-    elif rating <= 1949: return "ツキノワグマ級"
-    elif rating <= 2049: return "アメリカクロクマ級"
-    elif rating <= 2149: return "ヒグマ級"
-    else: return "ホッキョクグマ級"
+    """レーティングの数値から、自動で段位（動物名）を返す"""
+    if rating <= 1349: return "🦥 ナマケモノ級"
+    elif rating <= 1449: return "🦝 アライグマ級"
+    elif rating <= 1549: return "🐻 マレーグマ級"
+    elif rating <= 1649: return "🐼 ジャイアントパンダ級"
+    elif rating <= 1749: return "👓 メガネグマ級"
+    elif rating <= 1849: return "🧗 ナマケグマ級"
+    elif rating <= 1949: return "🌙 ツキノワグマ級"
+    elif rating <= 2049: return "🌲 アメリカクロクマ級"
+    elif rating <= 2149: return "🪵 ヒグマ級"
+    else: return "❄️ ホッキョクグマ級"
 
 
 def load_data():
-    """Excelからデータを安全に読み込む"""
-    df_g = pd.read_excel(EXCEL_FILE, sheet_name="対局入力")
-    df_m = pd.read_excel(EXCEL_FILE, sheet_name="メンバーマスタ")
-    try:
-        df_l = pd.read_excel(EXCEL_FILE, sheet_name="ログインログ")
-    except Exception:
-        df_l = pd.DataFrame(columns=["閲覧日時", "ログインID", "名前"])
+    """SecretsまたはローカルのExcelからデータを安全に読み込む"""
+    # インターネット公開（Streamlit Cloud）環境の場合、Secretsの暗号化テキストを読み込む
+    if "data" in st.secrets:
+        import io
+        g_csv = st.secrets["data"]["games"]
+        m_csv = st.secrets["data"]["members"]
+        l_csv = st.secrets["data"]["logs"]
+
+        df_g = pd.read_csv(io.StringIO(g_csv.strip()))
+        df_m = pd.read_csv(io.StringIO(m_csv.strip()))
+        try:
+            df_l = pd.read_csv(io.StringIO(l_csv.strip()))
+        except Exception:
+            df_l = pd.DataFrame(columns=["閲覧日時", "ログインID", "名前"])
+    else:
+        # パソコン（ローカル環境）のExcelを読み込む
+        df_g = pd.read_excel(EXCEL_FILE, sheet_name="対局入力")
+        df_m = pd.read_excel(EXCEL_FILE, sheet_name="メンバーマスタ")
+        try:
+            df_l = pd.read_excel(EXCEL_FILE, sheet_name="ログインログ")
+        except Exception:
+            df_l = pd.DataFrame(columns=["閲覧日時", "ログインID", "名前"])
 
     if "初期レート" not in df_m.columns:
         df_m["初期レート"] = 1500.0
@@ -53,11 +69,16 @@ def load_data():
 
 
 def save_excel(df_g, df_m, df_l):
-    """Excelへデータを安全に上書き保存する"""
-    with pd.ExcelWriter(EXCEL_FILE, mode="a", engine="openpyxl", if_sheet_exists="replace") as w:
-        df_g.to_excel(w, sheet_name="対局入力", index=False)
-        df_m.to_excel(w, sheet_name="メンバーマスタ", index=False)
-        df_l.to_excel(w, sheet_name="ログインログ", index=False)
+    """データを保存する（ネット環境では一時反映、ローカルではExcelへ保存）"""
+    if "data" in st.secrets:
+        st.session_state["temporary_df_games"] = df_g
+        st.session_state["temporary_df_members"] = df_m
+        st.session_state["temporary_df_logs"] = df_l
+    else:
+        with pd.ExcelWriter(EXCEL_FILE, mode="a", engine="openpyxl", if_sheet_exists="replace") as w:
+            df_g.to_excel(w, sheet_name="対局入力", index=False)
+            df_m.to_excel(w, sheet_name="メンバーマスタ", index=False)
+            df_l.to_excel(w, sheet_name="ログインログ", index=False)
 
 
 def calculate_all_ratings(df_g, df_m):
