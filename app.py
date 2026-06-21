@@ -398,6 +398,57 @@ else:
             else:
                 st.info("対局履歴がありません。")
 
+            # --- 【新機能】着順内訳の円グラフ＆スタッツ表示 ---
+            st.subheader("📊 着順内訳の割合（通算）")
+            
+            # 全対局から本人の着順データを集計
+            df_g_copy = df_games.copy()
+            melted_all = []
+            for r in range(1, 5):
+                t = df_g_copy[[f"{r}位"]].rename(columns={f"{r}位": "名前"})
+                t["着順"] = f"{r}着"
+                melted_all.append(t)
+            df_all_flat = pd.concat(melted_all, ignore_index=True)
+            df_my_ranks = df_all_flat[df_all_flat["名前"] == my_name]
+
+            if not df_my_ranks.empty:
+                # 各着順の回数をカウント
+                rank_counts = df_my_ranks["着順"].value_counts().reset_index()
+                rank_counts.columns = ["着順", "回数"]
+                
+                # 1着〜4着の順番に固定
+                rank_counts["sort"] = rank_counts["着順"].str.get(0).astype(int)
+                rank_counts = rank_counts.sort_values("sort")
+
+                # トップ率・ラス率を大きな文字で表示
+                col_rate1, col_rate2 = st.columns(2)
+                with col_rate1:
+                    st.metric(label="🏆 通算トップ率", value=f"{top_rate:.1f} %")
+                with col_rate2:
+                    st.metric(label="💀 通算ラス率", value=f"{las_rate:.1f} %")
+                
+                # 円グラフの作成
+                fig_pie = px.pie(
+                    rank_counts, 
+                    values="回数", 
+                    names="着順", 
+                    hole=0.3,
+                    color="着順",
+                    color_discrete_map={"1着":"#1f77b4", "2着":"#aec7e8", "3着":"#ffbb78", "4着":"#ff7f0e"}
+                )
+                # グラフ内の文字サイズを「18」に大きく拡大し、太字に変更
+                fig_pie.update_traces(
+                    textposition='inside', 
+                    textinfo='percent+label',
+                    textfont_size=18,
+                    insidetextfont=dict(color='white', weight='bold')
+                )
+                # 凡例（右側の文字説明）のサイズも拡大
+                fig_pie.update_layout(legend=dict(font=dict(size=14)))
+                st.plotly_chart(fig_pie, use_container_width=True)
+            else:
+                st.info("円グラフを表示するための対局データがありません。")
+
             # レート推移グラフ
             st.subheader("📈 レーティング推移")
             if my_name in rating_history and len(rating_history[my_name]) > 1:
