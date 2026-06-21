@@ -348,15 +348,16 @@ else:
 
             # 現在のレート表示
             my_rate_df = df_members[df_members["名前"] == my_name]
-            my_rt_val = (
-                my_rate_df["現在のレート"].values[0] if not my_rate_df.empty else 1500.0
-            )
+            my_rt_val = my_rate_df["現在のレート"].values if not my_rate_df.empty else 1500.0
             st.metric(label="現在のレーティング", value=f"{my_rt_val} Rt")
 
             col1, col2 = st.columns(2)
             with col1:
                 st.subheader("🌙 月間成績")
                 st.write(f"**平均着順:** {p_stats['月間平均']} 着")
+                st.write(f"**トップ率:** {p_stats['月間トップ']} %")
+                st.write(f"**ラス率:** {p_stats['月間ラス']} %")
+                st.write(f"**着順内訳:** 1着:{p_stats['月間着順回数'][1]}回 / 2着:{p_stats['月間着順回数'][2]}回 / 3着:{p_stats['月間着順回数'][3]}回 / 4着:{p_stats['月間着順回数'][4]}回")
                 st.write(f"**対戦数:** {p_stats['月間対戦数']} / 30 戦")
                 if p_stats["月間対戦数"] < 30:
                     st.progress(p_stats["月間対戦数"] / 30)
@@ -366,6 +367,9 @@ else:
             with col2:
                 st.subheader("☀️ 年間成績")
                 st.write(f"**平均着順:** {p_stats['年間平均']} 着")
+                st.write(f"**トップ率:** {p_stats['年間トップ']} %")
+                st.write(f"**ラス率:** {p_stats['年間ラス']} %")
+                st.write(f"**着順内訳:** 1着:{p_stats['年間着順回数'][1]}回 / 2着:{p_stats['年間着順回数'][2]}回 / 3着:{p_stats['年間着順回数'][3]}回 / 4着:{p_stats['年間着順回数'][4]}回")
                 st.write(f"**対戦数:** {p_stats['年間対戦数']} / 360 戦")
                 if p_stats["年間対戦数"] < 360:
                     st.progress(p_stats["年間対戦数"] / 360)
