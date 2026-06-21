@@ -145,25 +145,34 @@ def calculate_personal_stats(df_g, p_name):
 
 
 def get_personal_history(df_g, p_name):
-    """個人の過去の対戦日と対戦相手の履歴を取得する"""
+    """個人の過去の対戦日と、その対局の1位〜4位のメンバー履歴を取得する"""
     if df_g.empty:
         return pd.DataFrame()
 
     rows = []
     for _, row in df_g.iterrows():
         p_list = [row["1位"], row["2位"], row["3位"], row["4位"]]
+        # 自分が参加している対局のみを抽出
         if p_name in p_list:
-            opp = [p for p in p_list if p != p_name]
             my_rank = p_list.index(p_name) + 1
             rows.append(
                 {
                     "対戦日": row["試合日"],
                     "あなたの着順": f"{my_rank}着",
-                    "対戦相手1": opp[0] if len(opp) > 0 else "-",
-                    "対戦相手2": opp[1] if len(opp) > 1 else "-",
-                    "対戦相手3": opp[2] if len(opp) > 2 else "-",
+                    "1位": row["1位"],
+                    "2位": row["2位"],
+                    "3位": row["3位"],
+                    "4位": row["4位"],
                 }
             )
+
+    if rows:
+        df_hist = pd.DataFrame(rows)
+        # 日付が新しい順に並び替え
+        return df_hist.sort_values(by="対戦日", ascending=False)
+    else:
+        return pd.DataFrame()
+
 
     if rows:
         df_hist = pd.DataFrame(rows)
