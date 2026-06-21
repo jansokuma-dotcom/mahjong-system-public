@@ -399,7 +399,7 @@ else:
             else:
                 st.info("対局履歴がありません。")
 
-            # --- 【新機能】着順内訳の円グラフ＆スタッツ表示 ---
+            # --- 【新機能】着順内訳の円グラフ表示 ---
             st.subheader("📊 着順内訳の割合（通算）")
             
             # 全対局から本人の着順データを集計
@@ -420,15 +420,8 @@ else:
                 # 1着〜4着の順番に固定
                 rank_counts["sort"] = rank_counts["着順"].str.get(0).astype(int)
                 rank_counts = rank_counts.sort_values("sort")
-
-                # トップ率・ラス率を大きな文字で表示
-                col_rate1, col_rate2 = st.columns(2)
-                with col_rate1:
-                    st.metric(label="🏆 通算トップ率", value=f"{top_rate:.1f} %")
-                with col_rate2:
-                    st.metric(label="💀 通算ラス率", value=f"{las_rate:.1f} %")
                 
-                # 円グラフの作成
+                # 円グラフの作成（消し忘れていた古い top_rate などの命令を排除しました）
                 fig_pie = px.pie(
                     rank_counts, 
                     values="回数", 
