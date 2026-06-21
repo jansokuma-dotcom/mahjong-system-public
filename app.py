@@ -110,9 +110,13 @@ def calculate_all_ratings(df_g, df_m):
 
     return p_rt, rt_hist
 def calculate_personal_stats(df_g, p_name):
-    """個人の月間・年間成績（平均着順・対戦数）を計算する"""
+    """個人の月間・年間成績（平均着順・対戦数・各着順の回数・トップ率・ラス率）を計算する"""
+    default_stats = {
+        "月間対戦数": 0, "月間平均": 0.0, "月間トップ": 0.0, "月間ラス": 0.0, "月間着順回数": {1: 0, 2: 0, 3: 0, 4: 0},
+        "年間対戦数": 0, "年間平均": 0.0, "年間トップ": 0.0, "年間ラス": 0.0, "年間着順回数": {1: 0, 2: 0, 3: 0, 4: 0}
+    }
     if df_g.empty:
-        return {"月間対戦数": 0, "月間平均": 0.0, "年間対戦数": 0, "年間平均": 0.0}
+        return default_stats
 
     df_g_copy = df_g.copy()
     df_g_copy["試合日"] = pd.to_datetime(df_g_copy["試合日"])
@@ -128,21 +132,30 @@ def calculate_personal_stats(df_g, p_name):
     df_p = df_all[df_all["名前"] == p_name]
 
     if df_p.empty:
-        return {"月間対戦数": 0, "月間平均": 0.0, "年間対戦数": 0, "年間平均": 0.0}
+        return default_stats
 
+    # 月間と年間のデータ抽出
     df_m = df_p[(df_p["試合日"].dt.year == now.year) & (df_p["試合日"].dt.month == now.month)]
     df_y = df_p[df_p["試合日"].dt.year == now.year]
 
-    m_avg = df_m["着順"].mean() if len(df_m) > 0 else 0.0
-    y_avg = df_y["着順"].mean() if len(df_y) > 0 else 0.0
+    # 月間の計算
+    m_count = len(df_m)
+    m_avg = df_m["着順"].mean() if m_count > 0 else 0.0
+    m_top = (len(df_m[df_m["着順"] == 1]) / m_count * 100) if m_count > 0 else 0.0
+    m_las = (len(df_m[df_m["着順"] == 4]) / m_count * 100) if m_count > 0 else 0.0
+    m_ranks = {r: len(df_m[df_m["着順"] == r]) for r in range(1, 5)}
+
+    # 年間の計算
+    y_count = len(df_y)
+    y_avg = df_y["着順"].mean() if y_count > 0 else 0.0
+    y_top = (len(df_y[df_y["着順"] == 1]) / y_count * 100) if y_count > 0 else 0.0
+    y_las = (len(df_y[df_y["着順"] == 4]) / y_count * 100) if y_count > 0 else 0.0
+    y_ranks = {r: len(df_y[df_y["着順"] == r]) for r in range(1, 5)}
 
     return {
-        "月間対戦数": len(df_m),
-        "月間平均": round(m_avg, 2),
-        "年間対戦数": len(df_y),
-        "年間平均": round(y_avg, 2),
+        "月間対戦数": m_count, "月間平均": round(m_avg, 2), "月間トップ": round(m_top, 1), "月間ラス": round(m_las, 1), "月間着順回数": m_ranks,
+        "年間対戦数": y_count, "年間平均": round(y_avg, 2), "年間トップ": round(y_top, 1), "年間ラス": round(y_las, 1), "年間着順回数": y_ranks
     }
-
 
 def get_personal_history(df_g, p_name):
     """個人の過去の対戦日と、その対局の1位〜4位のメンバー履歴を取得する"""
