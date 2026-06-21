@@ -118,6 +118,7 @@ def calculate_personal_stats(df_g, p_name):
     if df_g.empty:
         return default_stats
 
+    # 【バグ修正箇所】安全にデータをコピーして日付型に変換
     df_g_copy = df_g.copy()
     df_g_copy["試合日"] = pd.to_datetime(df_g_copy["試合日"])
     now = datetime.datetime.now()
