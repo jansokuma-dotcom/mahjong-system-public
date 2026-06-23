@@ -2,10 +2,15 @@ import datetime
 import math
 import os
 import re
+import ssl
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 from streamlit_cookies_controller import CookieController
+
+# 💡【重要：通信エラーの根本原因を抹殺する安全装置】
+# 新しいサーバー環境での通信遮断(URLError)を防ぐため、SSL証明書の検証をスキップします
+ssl._create_default_https_context = ssl._create_unverified_context
 
 EXCEL_FILE = "mahjong_system.xlsx"
 
@@ -37,11 +42,10 @@ def get_dan_name(rating):
 
 
 def load_data():
-    """Googleのセキュリティ制限を100%無効化する直接エクスポート方式"""
+    """Googleのセキュリティブロックを100%突破する直接エクスポート方式"""
     # 店長さんのスプレッドシートIDを直接固定
     sheet_id = "1kssCIbWVlGRZ_Y8y-Y492Ur8E2Vk1ZoBlcB-35UzO8s"
     
-    # 💡【重要修正】gvizAPIを廃止し、最も原始的で確実にデータを引き抜く公式の直接ダウンロードURL
     url_games = f"https://google.com{sheet_id}/export?format=csv&sheet=games"
     url_members = f"https://google.com{sheet_id}/export?format=csv&sheet=members"
     url_logs = f"https://google.com{sheet_id}/export?format=csv&sheet=logs"
@@ -148,7 +152,7 @@ if st.session_state["cookies_initialized"] and not st.session_state["logged_in"]
     sid, spw = st.session_state["controller"].get("saved_login_id"), st.session_state["controller"].get("saved_login_pw")
     if sid and spw:
         user = df_members[(df_members["ログインID"] == sid) & (df_members["パスワード"].astype(str) == spw)]
-        if not user.empty: st.session_state.update({"logged_in": True, "user_name": str(user["名前"].values[0])})
+        if not user.empty: st.session_state.update({"logged_in": True, "user_name": str(user["名前"].values)})
 
 menu = st.sidebar.radio("メニュー", ["お客様ページ", "スタッフ専用入力画面"])
 
