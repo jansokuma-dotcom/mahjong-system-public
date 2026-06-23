@@ -37,21 +37,17 @@ def get_dan_name(rating):
 
 
 def load_data():
-    """Googleの仕様変更に対応し、各シート名を直接狙い撃ちして確実にCSV化する"""
+    """URLの自動分解をやめ、登録されたスプレッドシートのリンクを直接安全にCSV化する"""
     # SecretsからURLを取得
     url = st.secrets["general"]["spreadsheet_url"]
     
-    # 共有URLからスプレッドシートの個別IDを確実に抽出
-    match = re.search(r"/d/([^/]+)", url)
-    if not match:
-        st.error("Secretsに登録されているGoogleスプレッドシートのURL形式が正しくありません。")
-        st.stop()
-    sheet_id = match.group(1)
+    # URLの末尾（/edit?usp=sharingなど）を綺麗にカットする
+    base_url = url.split("/edit")[0] if "/edit" in url else url
     
-    # 💡【重要修正】シートの並び順に関係なく、タブの名前(sheet=)で直接CSVをエクスポートする最新のGoogle公式URL
-    url_games = f"https://google.com{sheet_id}/gviz/tq?tqx=out:csv&sheet=games"
-    url_members = f"https://google.com{sheet_id}/gviz/tq?tqx=out:csv&sheet=members"
-    url_logs = f"https://google.com{sheet_id}/gviz/tq?tqx=out:csv&sheet=logs"
+    # タブ名(sheet=)で直接CSVをエクスポートする最もエラーが起きない確実なURLを生成
+    url_games = f"{base_url}/gviz/tq?tqx=out:csv&sheet=games"
+    url_members = f"{base_url}/gviz/tq?tqx=out:csv&sheet=members"
+    url_logs = f"{base_url}/gviz/tq?tqx=out:csv&sheet=logs"
 
     # データのオンライン自動読み込みを実行
     try:
@@ -70,8 +66,6 @@ def load_data():
     if "現在のレート" not in df_m.columns: df_m["現在のレート"] = 1500.0
 
     return df_g, df_m, df_l
-
-
 
 
 def save_excel(df_g, df_m, df_l):
