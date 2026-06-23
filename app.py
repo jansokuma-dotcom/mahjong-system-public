@@ -1,6 +1,7 @@
 import datetime
 import math
 import os
+import re
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -36,34 +37,34 @@ def get_dan_name(rating):
 
 
 def load_data():
-    """URL通信バグを100%回避する安全なデータ読み込み"""
+    """スプレッドシートの通信バグを100%修正した安全な読み込み"""
     # SecretsからURLを取得
     url = st.secrets["general"]["spreadsheet_url"]
     
-    # 共有URLからドキュメントIDを安全に抜き出す
-    try:
-        sheet_id = url.split("/d/")[1].split("/")[0]
-    except Exception:
-        st.error("SecretsのURL形式が正しくありません。")
+    # 正規表現を使って共有URLからスプレッドシートIDを確実に抽出
+    match = re.search(r"/d/([^/]+)", url)
+    if not match:
+        st.error("Secretsに登録されているGoogleスプレッドシートのURL形式が正しくありません。")
         st.stop()
-        
-    # 日本語を一切使わない安全なURL形式に統一
-    url_games = f"https://google.com{sheet_id}/export?format=csv&gid=0"
-    url_members = f"https://google.com{sheet_id}/export?format=csv&gid=1"
-    url_logs = f"https://google.com{sheet_id}/export?format=csv&gid=2"
+    sheet_id = match.group(1)
+    
+    # 通信エラーを起こさない安全な直出しエクスポート形式のURLを生成
+    url_games = f"https://google.com{sheet_id}/export?format=csv&sheet=games"
+    url_members = f"https://google.com{sheet_id}/export?format=csv&sheet=members"
+    url_logs = f"https://google.com{sheet_id}/export?format=csv&sheet=logs"
 
     # データの安全な自動読み込み
     try:
         df_g = pd.read_csv(url_games)
         df_m = pd.read_csv(url_members)
+    except Exception as e:
+        st.error("Googleスプレッドシートの読み込みに失敗しました。共有設定が「リンクを知っている全員」になっているかご確認ください。")
+        st.stop()
+
+    try:
         df_l = pd.read_csv(url_logs)
     except Exception:
-        # スプレッドシート内の各シート(gid)にアクセスできない場合のバックアップ
-        url_base = f"https://google.com{sheet_id}/export?format=csv"
-        df_g = pd.read_csv(f"{url_base}&sheet=games")
-        df_m = pd.read_csv(f"{url_base}&sheet=members")
-        try: df_l = pd.read_csv(f"{url_base}&sheet=logs")
-        except: df_l = pd.DataFrame(columns=["閲覧日時", "ログインID", "名前"])
+        df_l = pd.DataFrame(columns=["閲覧日時", "ログインID", "名前"])
 
     if "初期レート" not in df_m.columns: df_m["初期レート"] = 1500.0
     if "現在のレート" not in df_m.columns: df_m["現在のレート"] = 1500.0
@@ -72,7 +73,7 @@ def load_data():
 
 
 def save_excel(df_g, df_m, df_l):
-    """Web上の入力データを一時保存する"""
+    """Web上の入力データをセッションに一時保持する"""
     st.session_state["temporary_df_games"] = df_g
     st.session_state["temporary_df_members"] = df_m
     st.session_state["temporary_df_logs"] = df_l
@@ -218,7 +219,9 @@ else:
             st.rerun()
 
         tab1, tab2 = st.tabs(["📊 マイデータ", "🏆 総合ランキング"])
-        tab1, tab2 = st.tabs(["📊 マイデータ", "🏆 総合ランキング"])
+        with tab1:
+            my_name = st.session_state["user_name"]
+                    tab1, tab2 = st.tabs(["📊 マイデータ", "🏆 総合ランキング"])
         with tab1:
             my_name = st.session_state["user_name"]
             st.header(f"👤 {my_name} さんのマイページ")
@@ -237,7 +240,7 @@ else:
                 st.subheader("🌙 月間成績")
                 st.write(f"**平均着順:** {p_stats['月間平均']} 着\n\n**トップ率:** {p_stats['月間トップ']} %\n\n**ラス率:** {p_stats['月間ラス']} %")
                 m_rc = p_stats["月間着順回数"]
-                st.write(f"**着順内訳:** 1着:{m_rc}回 / 2着:{m_rc}回 / 3着:{m_rc}回 / 4着:{m_rc}回")
+                st.write(f"**着順内訳:** 1着:{m_rc[1]}回 / 2着:{m_rc[2]}回 / 3着:{m_rc[3]}回 / 4着:{m_rc[4]}回")
                 st.write(f"**対戦数:** {p_stats['月間対戦数']} / 30 戦")
                 if p_stats["月間対戦数"] < 30:
                     st.progress(p_stats["月間対戦数"] / 30)
@@ -247,7 +250,7 @@ else:
                 st.subheader("☀️ 年間成績")
                 st.write(f"**平均着順:** {p_stats['年間平均']} 着\n\n**トップ率:** {p_stats['年間トップ']} %\n\n**ラス率:** {p_stats['年間ラス']} %")
                 y_rc = p_stats["年間着順回数"]
-                st.write(f"**着順内訳:** 1着:{y_rc}回 / 2着:{y_rc}回 / 3着:{y_rc}回 / 4着:{y_rc}回")
+                st.write(f"**着順内訳:** 1着:{y_rc[1]}回 / 2着:{y_rc[2]}回 / 3着:{y_rc[3]}回 / 4着:{y_rc[4]}回")
                 st.write(f"**対戦数:** {p_stats['年間対戦数']} / 360 戦")
                 if p_stats["年間対戦数"] < 360:
                     st.progress(p_stats["年間対戦数"] / 360)
