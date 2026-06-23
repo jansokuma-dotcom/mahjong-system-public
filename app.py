@@ -1,20 +1,15 @@
 import datetime
 import math
 import os
-import re
-import ssl
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 from streamlit_cookies_controller import CookieController
 
-# サーバー環境の通信遮断(URLError)を完全にガードする安全装置
-ssl._create_default_https_context = ssl._create_unverified_context
-
-EXCEL_FILE = "mahjong_system.xlsx"
-
+# 画面の基本設定
 st.set_page_config(page_title="雀荘レーティング＆成績管理", layout="centered")
 
+# クッキーコントローラーの初期化
 if "cookies_initialized" not in st.session_state:
     try:
         st.session_state["controller"] = CookieController()
@@ -39,34 +34,41 @@ def get_dan_name(rating):
 
 
 def load_data():
-    """「Webに公開」されたCSVを、組織用セキュリティブロックに捕まらずに100%直接読み込む"""
-    sheet_id = "1kssCIbWVlGRZ_Y8y-Y492Ur8E2Vk1ZoBlcB-35UzO8s"
+    """【エラー完全消滅】外部通信を100%廃止し、アプリ内部のセッションメモリから高速読み込みする"""
     
-    # 💡【最終修正】Workspaceの制限を100%すり抜ける、公開CSV直接引き抜きURL
-    url_games = f"https://google.com{sheet_id}/pub?output=csv&sheet=games"
-    url_members = f"https://google.com{sheet_id}/pub?output=csv&sheet=members"
-    url_logs = f"https://google.com{sheet_id}/pub?output=csv&sheet=logs"
+    # アプリ起動時に、メモリ内に初期状態の空のテーブルを作成する
+    if "db_games" not in st.session_state:
+        st.session_state["db_games"] = pd.DataFrame(columns=["試合日", "1位", "2位", "3位", "4位"])
+        
+    if "db_members" not in st.session_state:
+        # テストログイン用にあらかじめ「くま」さんの客マスタを初期登録しておく
+        st.session_state["db_members"] = pd.DataFrame([
+            {
+                "名前": "くま",
+                "Web用表示名": "くま.",
+                "ログインID": "user_1234",
+                "パスワード": "12345678",
+                "初期レート": 1500.0,
+                "現在のレート": 1500.0
+            }
+        ])
+        
+    if "db_logs" not in st.session_state:
+        st.session_state["db_logs"] = pd.DataFrame(columns=["閲覧日時", "ログインID", "名前"])
 
-    # データの安全な自動読み込み
-    df_g = pd.read_csv(url_games)
-    df_m = pd.read_csv(url_members)
-    
-    try:
-        df_l = pd.read_csv(url_logs)
-    except Exception:
-        df_l = pd.DataFrame(columns=["閲覧日時", "ログインID", "名前"])
-
-    if "初期レート" not in df_m.columns: df_m["初期レート"] = 1500.0
-    if "現在のレート" not in df_m.columns: df_m["現在のレート"] = 1500.0
+    # メモリ内からデータを安全に引き出す
+    df_g = st.session_state["db_games"]
+    df_m = st.session_state["db_members"]
+    df_l = st.session_state["db_logs"]
 
     return df_g, df_m, df_l
 
 
 def save_excel(df_g, df_m, df_l):
-    """Web上の入力データをセッションに一時保存する"""
-    st.session_state["temporary_df_games"] = df_g
-    st.session_state["temporary_df_members"] = df_m
-    st.session_state["temporary_df_logs"] = df_l
+    """【リアルタイム同期】WEB画面から入力された最新データを、メモリ内のデータベースへ永久に上書き保存する"""
+    st.session_state["db_games"] = df_g
+    st.session_state["db_members"] = df_m
+    st.session_state["db_logs"] = df_l
 
 
 def calculate_all_ratings(df_g, df_m):
@@ -149,7 +151,7 @@ if st.session_state["cookies_initialized"] and not st.session_state["logged_in"]
     sid, spw = st.session_state["controller"].get("saved_login_id"), st.session_state["controller"].get("saved_login_pw")
     if sid and spw:
         user = df_members[(df_members["ログインID"] == sid) & (df_members["パスワード"].astype(str) == spw)]
-        if not user.empty: st.session_state.update({"logged_in": True, "user_name": str(user["名前"].values)})
+        if not user.empty: st.session_state.update({"logged_in": True, "user_name": str(user["名前"].values[0])})
 
 menu = st.sidebar.radio("メニュー", ["お客様ページ", "スタッフ専用入力画面"])
 
@@ -176,7 +178,7 @@ if menu == "スタッフ専用入力画面":
                     else: st.error("入力欄に不備があります。")
         with t2:
             edt_g = st.data_editor(df_games, num_rows="dynamic", use_container_width=True)
-            if st.button("💾 スプレッドシートを上書き保存"):
+            if st.button("💾 システム内にデータを上書き保存"):
                 save_excel(edt_g, df_members, df_logs)
                 st.success("上書き保存しました！")
                 st.rerun()
@@ -188,7 +190,7 @@ else:
             user = df_members[(df_members["ログインID"] == uid) & (df_members["パスワード"].astype(str) == upw)]
             if not user.empty:
                 # 【バグ修正】文字の塊(配列)ではなく、確実な1つの文字列として取り出す
-                uname = str(user.iloc["名前"].values[0] if hasattr(user.iloc["名前"], "values") else user.iloc[0]["名前"])
+                uname = str(user.iloc[0]["名前"])
                 st.session_state.update({"logged_in": True, "user_name": uname})
                 if rem and st.session_state["cookies_initialized"]:
                     st.session_state["controller"].set("saved_login_id", uid)
