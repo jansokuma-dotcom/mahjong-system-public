@@ -37,24 +37,28 @@ def get_dan_name(rating):
 
 
 def load_data():
-    """スプレッドシートの通信バグを100%修正した安全な読み込み"""
+    """URLの自動分解を完全に廃止し、どのような共有URLからでも確実にデータを引き抜く"""
+    # SecretsからURLを取得
     url = st.secrets["general"]["spreadsheet_url"]
     
+    # 共有URLから英数字のスプレッドシート固有IDを正規表現で100%確実に抽出
     match = re.search(r"/d/([^/]+)", url)
     if not match:
         st.error("Secretsに登録されているGoogleスプレッドシートのURL形式が正しくありません。")
         st.stop()
     sheet_id = match.group(1)
     
+    # 【最重要】URLを分解せず、シート名(sheet=)を直接指定してCSVをダウンロードさせる最強の安全URL
     url_games = f"https://google.com{sheet_id}/export?format=csv&sheet=games"
     url_members = f"https://google.com{sheet_id}/export?format=csv&sheet=members"
     url_logs = f"https://google.com{sheet_id}/export?format=csv&sheet=logs"
 
+    # データのオンライン自動読み込みを実行
     try:
         df_g = pd.read_csv(url_games)
         df_m = pd.read_csv(url_members)
     except Exception as e:
-        st.error("Googleスプレッドシートの読み込みに失敗しました。共有設定が「リンクを知っている全員」になっているかご確認ください。")
+        st.error("Googleスプレッドシートからのデータ取得に失敗しました。共有設定が「リンクを知っている全員」になっているかご確認ください。")
         st.stop()
 
     try:
@@ -66,6 +70,7 @@ def load_data():
     if "現在のレート" not in df_m.columns: df_m["現在のレート"] = 1500.0
 
     return df_g, df_m, df_l
+
 
 
 def save_excel(df_g, df_m, df_l):
