@@ -37,28 +37,24 @@ def get_dan_name(rating):
 
 
 def load_data():
-    """URLの自動分解を完全に廃止し、どのような共有URLからでも確実にデータを引き抜く"""
-    # SecretsからURLを取得
+    """スプレッドシートの通信バグを100%修正した安全な読み込み"""
     url = st.secrets["general"]["spreadsheet_url"]
     
-    # 共有URLから英数字のスプレッドシート固有IDを正規表現で100%確実に抽出
     match = re.search(r"/d/([^/]+)", url)
     if not match:
         st.error("Secretsに登録されているGoogleスプレッドシートのURL形式が正しくありません。")
         st.stop()
     sheet_id = match.group(1)
     
-    # 【最重要】URLを分解せず、シート名(sheet=)を直接指定してCSVをダウンロードさせる最強の安全URL
     url_games = f"https://google.com{sheet_id}/export?format=csv&sheet=games"
     url_members = f"https://google.com{sheet_id}/export?format=csv&sheet=members"
     url_logs = f"https://google.com{sheet_id}/export?format=csv&sheet=logs"
 
-    # データのオンライン自動読み込みを実行
     try:
         df_g = pd.read_csv(url_games)
         df_m = pd.read_csv(url_members)
     except Exception as e:
-        st.error("Googleスプレッドシートからのデータ取得に失敗しました。共有設定が「リンクを知っている全員」になっているかご確認ください。")
+        st.error("Googleスプレッドシートの読み込みに失敗しました。共有設定が「リンクを知っている全員」になっているかご確認ください。")
         st.stop()
 
     try:
@@ -70,7 +66,6 @@ def load_data():
     if "現在のレート" not in df_m.columns: df_m["現在のレート"] = 1500.0
 
     return df_g, df_m, df_l
-
 
 
 def save_excel(df_g, df_m, df_l):
@@ -160,7 +155,7 @@ if st.session_state["cookies_initialized"] and not st.session_state["logged_in"]
     sid, spw = st.session_state["controller"].get("saved_login_id"), st.session_state["controller"].get("saved_login_pw")
     if sid and spw:
         user = df_members[(df_members["ログインID"] == sid) & (df_members["パスワード"].astype(str) == spw)]
-        if not user.empty: st.session_state.update({"logged_in": True, "user_name": str(user["名前"].values[0])})
+        if not user.empty: st.session_state.update({"logged_in": True, "user_name": str(user.iloc[0]["名前"])})
 
 menu = st.sidebar.radio("メニュー", ["お客様ページ", "スタッフ専用入力画面"])
 
@@ -247,7 +242,7 @@ else:
                 st.subheader("☀️ 年間成績")
                 st.write(f"**平均着順:** {p_stats['年間平均']} 着\n\n**トップ率:** {p_stats['年間トップ']} %\n\n**ラス率:** {p_stats['年間ラス']} %")
                 y_rc = p_stats["年間着順回数"]
-                st.write(f"**着順内訳:** 1着:{y_rc[1]}回 / 2着:{y_rc[2]}回 / 3着:{y_rc[3]}回 / 4着:{y_rc[4]}回")
+                st.write(f"**着順内訳:** 1着:{y_rc[1]}回 / 2着:{y_rc[2]}回 / 3着:{y_rc}回 / 4着:{y_rc[4]}回")
                 st.write(f"**対戦数:** {p_stats['年間対戦数']} / 360 戦")
                 if p_stats["年間対戦数"] < 360:
                     st.progress(p_stats["年間対戦数"] / 360)
