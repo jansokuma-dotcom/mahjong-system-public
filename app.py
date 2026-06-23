@@ -271,7 +271,7 @@ else:
                 st.plotly_chart(fig_pie, use_container_width=True)
             else: st.info("円グラフを表示するための対局データがありません。")
 
-                        st.subheader("📈 レーティング推移")
+            st.subheader("📈 レーティング推移")
             if my_name in rating_history and len(rating_history[my_name]) > 1:
                 df_chart = pd.DataFrame({"対戦回数": list(range(len(rating_history[my_name]))), "レーティング": rating_history[my_name]})
                 fig = px.line(df_chart, x="対戦回数", y="レーティング", title="Rt変動トレンド", markers=True)
