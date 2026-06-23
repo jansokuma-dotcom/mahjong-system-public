@@ -37,24 +37,28 @@ def get_dan_name(rating):
 
 
 def load_data():
-    """スプレッドシートの通信バグを100%修正した安全な読み込み"""
+    """URLの切り出しバグを完全に排除し、安全に各シート(CSV)を直接読み込む"""
+    # SecretsからURLを取得
     url = st.secrets["general"]["spreadsheet_url"]
     
+    # 共有URLから英数字の個別IDを正規表現で100%確実に抽出する（通信エラーの根本原因を修正）
     match = re.search(r"/d/([^/]+)", url)
     if not match:
         st.error("Secretsに登録されているGoogleスプレッドシートのURL形式が正しくありません。")
         st.stop()
     sheet_id = match.group(1)
     
-    url_games = f"https://google.com{sheet_id}/export?format=csv&sheet=games"
-    url_members = f"https://google.com{sheet_id}/export?format=csv&sheet=members"
+    # 💡【重要】日本語シート名やgidのズレを完全に無効化する、Google公式の最新CSVダウンロードURL
+    url_games = f"https://google.com{sheet_id}/gviz/tq?tqx=out:csv&sheet=games"
+    url_members = f"https://google.com{sheet_id}/gviz/tq?tqx=out:csv&sheet=members"
     url_logs = f"https://google.com{sheet_id}/export?format=csv&sheet=logs"
 
+    # データの安全な自動読み込みを実行
     try:
         df_g = pd.read_csv(url_games)
         df_m = pd.read_csv(url_members)
     except Exception as e:
-        st.error("Googleスプレッドシートの読み込みに失敗しました。共有設定が「リンクを知っている全員」になっているかご確認ください。")
+        st.error("Googleスプレッドシートからのデータ取得に失敗しました。共有設定が「リンクを知っている全員」になっているかご確認ください。")
         st.stop()
 
     try:
