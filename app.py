@@ -1,6 +1,8 @@
 import datetime
+import io
 import math
 import os
+import re
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -38,15 +40,20 @@ def load_data():
     # SecretsからURLを取得
     url = st.secrets["general"]["spreadsheet_url"]
     
-    # スプレッドシートのIDを抽出してCSVダウンロードURLに変換
-    sheet_id = url.split("/d/")[1].split("/")[0]
+    # 【バグ修正箇所】どのような共有URLからでも正確にシートIDを抜き出す
+    match = re.search(r"/d/([^/]+)", url)
+    if match:
+        sheet_id = match.group(1)
+    else:
+        st.error("Secretsに登録されているGoogleスプレッドシートのURLが正しくありません。")
+        st.stop()
     
-    # 各シートの読み込み用URL
+    # 各シート専用のCSVダウンロードURLを生成
     url_games = f"https://google.com{sheet_id}/gviz/tq?tqx=out:csv&sheet=%E5%AF%BE%E5%B1%80%E5%85%A5%E5%8A%9B"
     url_members = f"https://google.com{sheet_id}/gviz/tq?tqx=out:csv&sheet=%E3%83%A1%E3%83%B3%E3%83%90%E3%83%BC%E3%83%9E%E3%82%B9%E3%82%BF"
     url_logs = f"https://google.com{sheet_id}/gviz/tq?tqx=out:csv&sheet=%E3%83%AD%E3%82%B0%E3%82%A4%E3%83%B3%E3%83%AD%E3%82%B0"
 
-    # データの読み込み
+    # データの安全な読み込み
     df_g = pd.read_csv(url_games)
     df_m = pd.read_csv(url_members)
     try:
@@ -54,7 +61,6 @@ def load_data():
     except Exception:
         df_l = pd.DataFrame(columns=["閲覧日時", "ログインID", "名前"])
 
-    # 列の初期化保証
     if "初期レート" not in df_m.columns:
         df_m["初期レート"] = 1500.0
     if "現在のレート" not in df_m.columns:
@@ -64,14 +70,10 @@ def load_data():
 
 
 def save_excel(df_g, df_m, df_l):
-    """GoogleスプレッドシートへWeb画面からデータを直接書き込み保存する"""
-    # Streamlit環境で安全に書き込みを行うためのセッションキャッシュ
+    """Web画面からの入力データをセッションに一時保存する"""
     st.session_state["temporary_df_games"] = df_g
     st.session_state["temporary_df_members"] = df_m
     st.session_state["temporary_df_logs"] = df_l
-    
-    # 💡実際の運用時は、スタッフ専用画面からGoogleスプレッドシートURLへデータを転送します
-    # ここではエラーを完全に防ぎつつ、画面上の数値を即時更新させる安全ロジックを確立します
 
 
 def calculate_all_ratings(df_g, df_m):
@@ -107,6 +109,7 @@ def calculate_all_ratings(df_g, df_m):
             rt_hist[p].append(p_rt[p])
 
     return p_rt, rt_hist
+
 def calculate_personal_stats(df_g, p_name):
     """個人の月間・年間成績を計算する"""
     default_stats = {
