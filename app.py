@@ -98,7 +98,6 @@ def calculate_all_ratings(df_g, df_m):
             rt_hist[p].append(p_rt[p])
     return p_rt, rt_hist
 
-
 def calculate_personal_stats(df_g, p_name):
     """個人の月間・年間成績を計算する"""
     default_stats = {
@@ -214,7 +213,7 @@ else:
                 st.session_state["controller"].remove("saved_login_pw")
             st.rerun()
 
-                tab1, tab2 = st.tabs(["📊 マイデータ", "🏆 総合ランキング"])
+        tab1, tab2 = st.tabs(["📊 マイデータ", "🏆 総合ランキング"])
         with tab1:
             my_name = st.session_state["user_name"]
             st.header(f"👤 {my_name} さんのマイページ")
@@ -233,7 +232,7 @@ else:
                 st.subheader("🌙 月間成績")
                 st.write(f"**平均着順:** {p_stats['月間平均']} 着\n\n**トップ率:** {p_stats['月間トップ']} %\n\n**ラス率:** {p_stats['月間ラス']} %")
                 m_rc = p_stats["月間着順回数"]
-                st.write(f"**着順内訳:** 1着:{m_rc[1]}回 / 2着:{m_rc[2]}回 / 3着:{m_rc[3]}回 / 4着:{m_rc[4]}回")
+                st.write(f"**着順内訳:** 1着:{m_rc}回 / 2着:{m_rc}回 / 3着:{m_rc}回 / 4着:{m_rc}回")
                 st.write(f"**対戦数:** {p_stats['月間対戦数']} / 30 戦")
                 if p_stats["月間対戦数"] < 30:
                     st.progress(p_stats["月間対戦数"] / 30)
@@ -243,7 +242,7 @@ else:
                 st.subheader("☀️ 年間成績")
                 st.write(f"**平均着順:** {p_stats['年間平均']} 着\n\n**トップ率:** {p_stats['年間トップ']} %\n\n**ラス率:** {p_stats['年間ラス']} %")
                 y_rc = p_stats["年間着順回数"]
-                st.write(f"**着順内訳:** 1着:{y_rc[1]}回 / 2着:{y_rc[2]}回 / 3着:{y_rc[3]}回 / 4着:{y_rc[4]}回")
+                st.write(f"**着順内訳:** 1着:{y_rc}回 / 2着:{y_rc}回 / 3着:{y_rc}回 / 4着:{y_rc}回")
                 st.write(f"**対戦数:** {p_stats['年間対戦数']} / 360 戦")
                 if p_stats["年間対戦数"] < 360:
                     st.progress(p_stats["年間対戦数"] / 360)
@@ -272,11 +271,13 @@ else:
                 st.plotly_chart(fig_pie, use_container_width=True)
             else: st.info("円グラフを表示するための対局データがありません。")
 
-            st.subheader("📈 レーティング推移")
+                        st.subheader("📈 レーティング推移")
             if my_name in rating_history and len(rating_history[my_name]) > 1:
                 df_chart = pd.DataFrame({"対戦回数": list(range(len(rating_history[my_name]))), "レーティング": rating_history[my_name]})
-                st.plotly_chart(px.line(df_chart, x="対戦回数", y="レーティング", title="Rt変動トレンド", markers=True), use_container_width=True)
-            else: st.info("十分な対局データがありません。")
+                fig = px.line(df_chart, x="対戦回数", y="レーティング", title="Rt変動トレンド", markers=True)
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("十分な対局データがありません。")
 
         with tab2:
             st.header("店舗総合トップ10")
@@ -310,5 +311,4 @@ else:
                     else: st.info("条件を満たすプレイヤーはまだいません。")
                 else: st.info("選択された期間の対局データがありません。")
             else: st.info("対局データがありません。")
-
 
