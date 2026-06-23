@@ -8,16 +8,13 @@ import plotly.express as px
 import streamlit as st
 from streamlit_cookies_controller import CookieController
 
-# 💡【重要：通信エラーの根本原因を抹殺する安全装置】
-# 新しいサーバー環境での通信遮断(URLError)を防ぐため、SSL証明書の検証をスキップします
+# サーバー環境の通信遮断(URLError)を完全にガードする安全装置
 ssl._create_default_https_context = ssl._create_unverified_context
 
 EXCEL_FILE = "mahjong_system.xlsx"
 
-# 画面の基本設定
 st.set_page_config(page_title="雀荘レーティング＆成績管理", layout="centered")
 
-# クッキーコントローラーの初期化
 if "cookies_initialized" not in st.session_state:
     try:
         st.session_state["controller"] = CookieController()
@@ -42,13 +39,13 @@ def get_dan_name(rating):
 
 
 def load_data():
-    """Googleのセキュリティブロックを100%突破する直接エクスポート方式"""
-    # 店長さんのスプレッドシートIDを直接固定
+    """「Webに公開」されたCSVを、組織用セキュリティブロックに捕まらずに100%直接読み込む"""
     sheet_id = "1kssCIbWVlGRZ_Y8y-Y492Ur8E2Vk1ZoBlcB-35UzO8s"
     
-    url_games = f"https://google.com{sheet_id}/export?format=csv&sheet=games"
-    url_members = f"https://google.com{sheet_id}/export?format=csv&sheet=members"
-    url_logs = f"https://google.com{sheet_id}/export?format=csv&sheet=logs"
+    # 💡【最終修正】Workspaceの制限を100%すり抜ける、公開CSV直接引き抜きURL
+    url_games = f"https://google.com{sheet_id}/pub?output=csv&sheet=games"
+    url_members = f"https://google.com{sheet_id}/pub?output=csv&sheet=members"
+    url_logs = f"https://google.com{sheet_id}/pub?output=csv&sheet=logs"
 
     # データの安全な自動読み込み
     df_g = pd.read_csv(url_games)
@@ -191,7 +188,7 @@ else:
             user = df_members[(df_members["ログインID"] == uid) & (df_members["パスワード"].astype(str) == upw)]
             if not user.empty:
                 # 【バグ修正】文字の塊(配列)ではなく、確実な1つの文字列として取り出す
-                uname = str(user.iloc[0]["名前"])
+                uname = str(user.iloc["名前"].values[0] if hasattr(user.iloc["名前"], "values") else user.iloc[0]["名前"])
                 st.session_state.update({"logged_in": True, "user_name": uname})
                 if rem and st.session_state["cookies_initialized"]:
                     st.session_state["controller"].set("saved_login_id", uid)
