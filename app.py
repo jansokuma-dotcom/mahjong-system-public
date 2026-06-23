@@ -221,7 +221,7 @@ else:
         tab1, tab2 = st.tabs(["📊 マイデータ", "🏆 総合ランキング"])
         with tab1:
             my_name = st.session_state["user_name"]
-                    tab1, tab2 = st.tabs(["📊 マイデータ", "🏆 総合ランキング"])
+                tab1, tab2 = st.tabs(["📊 マイデータ", "🏆 総合ランキング"])
         with tab1:
             my_name = st.session_state["user_name"]
             st.header(f"👤 {my_name} さんのマイページ")
