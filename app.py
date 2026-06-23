@@ -37,23 +37,19 @@ def get_dan_name(rating):
 
 
 def load_data():
-    """URLの切り出しバグを完全に排除し、安全に各シート(CSV)を直接読み込む"""
-    # SecretsからURLを取得
+    """スプレッドシートから安全に各シート(CSV)を直接読み込む"""
     url = st.secrets["general"]["spreadsheet_url"]
     
-    # 共有URLから英数字の個別IDを正規表現で100%確実に抽出する（通信エラーの根本原因を修正）
     match = re.search(r"/d/([^/]+)", url)
     if not match:
         st.error("Secretsに登録されているGoogleスプレッドシートのURL形式が正しくありません。")
         st.stop()
     sheet_id = match.group(1)
     
-    # 💡【重要】日本語シート名やgidのズレを完全に無効化する、Google公式の最新CSVダウンロードURL
     url_games = f"https://google.com{sheet_id}/gviz/tq?tqx=out:csv&sheet=games"
     url_members = f"https://google.com{sheet_id}/gviz/tq?tqx=out:csv&sheet=members"
-    url_logs = f"https://google.com{sheet_id}/export?format=csv&sheet=logs"
+    url_logs = f"https://google.com{sheet_id}/gviz/tq?tqx=out:csv&sheet=logs"
 
-    # データの安全な自動読み込みを実行
     try:
         df_g = pd.read_csv(url_games)
         df_m = pd.read_csv(url_members)
@@ -159,7 +155,7 @@ if st.session_state["cookies_initialized"] and not st.session_state["logged_in"]
     sid, spw = st.session_state["controller"].get("saved_login_id"), st.session_state["controller"].get("saved_login_pw")
     if sid and spw:
         user = df_members[(df_members["ログインID"] == sid) & (df_members["パスワード"].astype(str) == spw)]
-        if not user.empty: st.session_state.update({"logged_in": True, "user_name": str(user.iloc[0]["名前"])})
+        if not user.empty: st.session_state.update({"logged_in": True, "user_name": str(user["名前"].values[0])})
 
 menu = st.sidebar.radio("メニュー", ["お客様ページ", "スタッフ専用入力画面"])
 
@@ -197,8 +193,7 @@ else:
         if st.button("ログイン") and uid and upw:
             user = df_members[(df_members["ログインID"] == uid) & (df_members["パスワード"].astype(str) == upw)]
             if not user.empty:
-                # 【バグ修正】文字の塊(配列)ではなく、確実な1つの文字列として取り出す
-                uname = str(user.iloc[0]["名前"])
+                uname = str(user["名前"].values[0])
                 st.session_state.update({"logged_in": True, "user_name": uname})
                 if rem and st.session_state["cookies_initialized"]:
                     st.session_state["controller"].set("saved_login_id", uid)
@@ -246,7 +241,7 @@ else:
                 st.subheader("☀️ 年間成績")
                 st.write(f"**平均着順:** {p_stats['年間平均']} 着\n\n**トップ率:** {p_stats['年間トップ']} %\n\n**ラス率:** {p_stats['年間ラス']} %")
                 y_rc = p_stats["年間着順回数"]
-                st.write(f"**着順内訳:** 1着:{y_rc[1]}回 / 2着:{y_rc[2]}回 / 3着:{y_rc}回 / 4着:{y_rc[4]}回")
+                st.write(f"**着順内訳:** 1着:{y_rc[1]}回 / 2着:{y_rc[2]}回 / 3着:{y_rc[3]}回 / 4着:{y_rc[4]}回")
                 st.write(f"**対戦数:** {p_stats['年間対戦数']} / 360 戦")
                 if p_stats["年間対戦数"] < 360:
                     st.progress(p_stats["年間対戦数"] / 360)
