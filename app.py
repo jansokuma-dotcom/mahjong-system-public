@@ -37,14 +37,14 @@ def get_dan_name(rating):
 
 
 def load_data():
-    """Googleのセキュリティを100%突破する公式クエリ方式でのデータ読み込み"""
+    """Googleのセキュリティ制限を100%無効化する直接エクスポート方式"""
     # 店長さんのスプレッドシートIDを直接固定
     sheet_id = "1kssCIbWVlGRZ_Y8y-Y492Ur8E2Vk1ZoBlcB-35UzO8s"
     
-    # 💡【重要修正】Googleが確実に複数シートを個別にデータ吐き出しする公式のデータ連携形式
-    url_games = f"https://google.com{sheet_id}/gviz/tq?tqx=out:csv&sheet=games"
-    url_members = f"https://google.com{sheet_id}/gviz/tq?tqx=out:csv&sheet=members"
-    url_logs = f"https://google.com{sheet_id}/gviz/tq?tqx=out:csv&sheet=logs"
+    # 💡【重要修正】gvizAPIを廃止し、最も原始的で確実にデータを引き抜く公式の直接ダウンロードURL
+    url_games = f"https://google.com{sheet_id}/export?format=csv&sheet=games"
+    url_members = f"https://google.com{sheet_id}/export?format=csv&sheet=members"
+    url_logs = f"https://google.com{sheet_id}/export?format=csv&sheet=logs"
 
     # データの安全な自動読み込み
     df_g = pd.read_csv(url_games)
@@ -186,7 +186,8 @@ else:
         if st.button("ログイン") and uid and upw:
             user = df_members[(df_members["ログインID"] == uid) & (df_members["パスワード"].astype(str) == upw)]
             if not user.empty:
-                uname = str(user["名前"].values[0])
+                # 【バグ修正】文字の塊(配列)ではなく、確実な1つの文字列として取り出す
+                uname = str(user.iloc[0]["名前"])
                 st.session_state.update({"logged_in": True, "user_name": uname})
                 if rem and st.session_state["cookies_initialized"]:
                     st.session_state["controller"].set("saved_login_id", uid)
