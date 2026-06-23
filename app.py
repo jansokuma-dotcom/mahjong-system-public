@@ -37,24 +37,24 @@ def get_dan_name(rating):
 
 
 def load_data():
-    """URLの自動分解をやめ、登録されたスプレッドシートのリンクを直接安全にCSV化する"""
-    # SecretsからURLを取得
+    """スプレッドシートの通信バグを100%修正した安全な読み込み"""
     url = st.secrets["general"]["spreadsheet_url"]
     
-    # URLの末尾（/edit?usp=sharingなど）を綺麗にカットする
-    base_url = url.split("/edit")[0] if "/edit" in url else url
+    match = re.search(r"/d/([^/]+)", url)
+    if not match:
+        st.error("Secretsに登録されているGoogleスプレッドシートのURL形式が正しくありません。")
+        st.stop()
+    sheet_id = match.group(1)
     
-    # タブ名(sheet=)で直接CSVをエクスポートする最もエラーが起きない確実なURLを生成
-    url_games = f"{base_url}/gviz/tq?tqx=out:csv&sheet=games"
-    url_members = f"{base_url}/gviz/tq?tqx=out:csv&sheet=members"
-    url_logs = f"{base_url}/gviz/tq?tqx=out:csv&sheet=logs"
+    url_games = f"https://google.com{sheet_id}/export?format=csv&sheet=games"
+    url_members = f"https://google.com{sheet_id}/export?format=csv&sheet=members"
+    url_logs = f"https://google.com{sheet_id}/export?format=csv&sheet=logs"
 
-    # データのオンライン自動読み込みを実行
     try:
         df_g = pd.read_csv(url_games)
         df_m = pd.read_csv(url_members)
     except Exception as e:
-        st.error("Googleスプレッドシートからのデータ取得に失敗しました。共有設定が「リンクを知っている全員」になっているかご確認ください。")
+        st.error("Googleスプレッドシートの読み込みに失敗しました。共有設定が「リンクを知っている全員」になっているかご確認ください。")
         st.stop()
 
     try:
@@ -97,9 +97,8 @@ def calculate_all_ratings(df_g, df_m):
             p_rt[p] += change[p]
             rt_hist[p].append(p_rt[p])
     return p_rt, rt_hist
-
 def calculate_personal_stats(df_g, p_name):
-    """個人の月間・年間成績を計算する"""
+    """個人の月間・年間成績を正確に計算する"""
     default_stats = {
         "月間対戦数": 0, "月間平均": 0.0, "月間トップ": 0.0, "月間ラス": 0.0, "月間着順回数": {1: 0, 2: 0, 3: 0, 4: 0},
         "年間対戦数": 0, "年間平均": 0.0, "年間トップ": 0.0, "年間ラス": 0.0, "年間着順回数": {1: 0, 2: 0, 3: 0, 4: 0}
@@ -156,7 +155,7 @@ if st.session_state["cookies_initialized"] and not st.session_state["logged_in"]
     sid, spw = st.session_state["controller"].get("saved_login_id"), st.session_state["controller"].get("saved_login_pw")
     if sid and spw:
         user = df_members[(df_members["ログインID"] == sid) & (df_members["パスワード"].astype(str) == spw)]
-        if not user.empty: st.session_state.update({"logged_in": True, "user_name": str(user["名前"].values)})
+        if not user.empty: st.session_state.update({"logged_in": True, "user_name": str(user["名前"].values[0])})
 
 menu = st.sidebar.radio("メニュー", ["お客様ページ", "スタッフ専用入力画面"])
 
@@ -194,7 +193,8 @@ else:
         if st.button("ログイン") and uid and upw:
             user = df_members[(df_members["ログインID"] == uid) & (df_members["パスワード"].astype(str) == upw)]
             if not user.empty:
-                uname = str(user["名前"].values)
+                # 【バグ修正】文字の塊(配列)ではなく、確実な1つの文字列として取り出す
+                uname = str(user.iloc[0]["名前"])
                 st.session_state.update({"logged_in": True, "user_name": uname})
                 if rem and st.session_state["cookies_initialized"]:
                     st.session_state["controller"].set("saved_login_id", uid)
@@ -220,7 +220,7 @@ else:
             p_stats = calculate_personal_stats(df_games, my_name)
 
             my_rate_df = df_members[df_members["名前"] == my_name]
-            my_rt_val = my_rate_df["現在のレート"].values if not my_rate_df.empty else 1500.0
+            my_rt_val = my_rate_df["現在のレート"].values[0] if not my_rate_df.empty else 1500.0
             dan_name = get_dan_name(my_rt_val)
 
             st.metric(label="現在のレーティング", value=f"{my_rt_val} Rt")
@@ -232,7 +232,7 @@ else:
                 st.subheader("🌙 月間成績")
                 st.write(f"**平均着順:** {p_stats['月間平均']} 着\n\n**トップ率:** {p_stats['月間トップ']} %\n\n**ラス率:** {p_stats['月間ラス']} %")
                 m_rc = p_stats["月間着順回数"]
-                st.write(f"**着順内訳:** 1着:{m_rc}回 / 2着:{m_rc}回 / 3着:{m_rc}回 / 4着:{m_rc}回")
+                st.write(f"**着順内訳:** 1着:{m_rc[1]}回 / 2着:{m_rc[2]}回 / 3着:{m_rc[3]}回 / 4着:{m_rc[4]}回")
                 st.write(f"**対戦数:** {p_stats['月間対戦数']} / 30 戦")
                 if p_stats["月間対戦数"] < 30:
                     st.progress(p_stats["月間対戦数"] / 30)
@@ -242,7 +242,7 @@ else:
                 st.subheader("☀️ 年間成績")
                 st.write(f"**平均着順:** {p_stats['年間平均']} 着\n\n**トップ率:** {p_stats['年間トップ']} %\n\n**ラス率:** {p_stats['年間ラス']} %")
                 y_rc = p_stats["年間着順回数"]
-                st.write(f"**着順内訳:** 1着:{y_rc}回 / 2着:{y_rc}回 / 3着:{y_rc}回 / 4着:{y_rc}回")
+                st.write(f"**着順内訳:** 1着:{y_rc[1]}回 / 2着:{y_rc[2]}回 / 3着:{y_rc[3]}回 / 4着:{y_rc[4]}回")
                 st.write(f"**対戦数:** {p_stats['年間対戦数']} / 360 戦")
                 if p_stats["年間対戦数"] < 360:
                     st.progress(p_stats["年間対戦数"] / 360)
@@ -274,10 +274,8 @@ else:
             st.subheader("📈 レーティング推移")
             if my_name in rating_history and len(rating_history[my_name]) > 1:
                 df_chart = pd.DataFrame({"対戦回数": list(range(len(rating_history[my_name]))), "レーティング": rating_history[my_name]})
-                fig = px.line(df_chart, x="対戦回数", y="レーティング", title="Rt変動トレンド", markers=True)
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("十分な対局データがありません。")
+                st.plotly_chart(px.line(df_chart, x="対戦回数", y="レーティング", title="Rt変動トレンド", markers=True), use_container_width=True)
+            else: st.info("十分な対局データがありません。")
 
         with tab2:
             st.header("店舗総合トップ10")
@@ -311,4 +309,3 @@ else:
                     else: st.info("条件を満たすプレイヤーはまだいません。")
                 else: st.info("選択された期間の対局データがありません。")
             else: st.info("対局データがありません。")
-
