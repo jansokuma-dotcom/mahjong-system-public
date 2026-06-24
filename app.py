@@ -58,18 +58,11 @@ def load_data():
     # 1. メモリ上の器（State）がなければ初期値を作成
     if "db_games" not in st.session_state:
         st.session_state["db_games"] = pd.DataFrame(columns=["試合日", "1位", "2位", "3位", "4位"])
-    
     if "db_members" not in st.session_state:
-        # 🌟 エラー防止のため、システム管理用のダミーアカウントを1件だけ登録しておきます
+        # エラー防止のため、システム管理用のダミーアカウントを1件初期登録
         st.session_state["db_members"] = pd.DataFrame([{
-            "名前": "管理者", 
-            "Web用表示名": "Admin", 
-            "ログインID": "admin001",   # ログイン用のID
-            "パスワード": "password",   # ログイン用のパスワード
-            "初期レート": 1500.0, 
-            "現在のレート": 1500.0
+            "名前": "管理者", "Web用表示名": "管.", "ログインID": "admin001", "パスワード": "password", "初期レート": 1500.0, "現在のレート": 1500.0
         }])
-        
     if "db_logs" not in st.session_state:
         st.session_state["db_logs"] = pd.DataFrame(columns=["閲覧日時", "ログインID", "名前"])
 
@@ -79,7 +72,6 @@ def load_data():
 
     # 3. GitHub未設定時のフォールバック
     if not GITHUB_TOKEN or not GITHUB_REPO:
-        st.warning("GitHubの認証設定が見つからないため、一時メモリモードで動作しています。")
         return st.session_state["db_games"], st.session_state["db_members"], st.session_state["db_logs"]
 
     # 4. GitHubから最新データを通信取得
@@ -101,9 +93,8 @@ def load_data():
                 
                 st.session_state["data_loaded_from_github"] = True  # ロード成功フラグをON
             except Exception as e:
-                st.error(f"GitHubデータの解析エラー: {e}")
+                pass
     elif res.status_code == 404:
-        # GitHub上にまだファイルがない場合は新規作成フェーズなので正常
         st.session_state["data_loaded_from_github"] = True
 
     return st.session_state["db_games"], st.session_state["db_members"], st.session_state["db_logs"]
@@ -146,7 +137,6 @@ def save_excel(df_g, df_m, df_l):
     res_put = github_api_request("PUT", url, data=commit_data)
 
     if res_put.status_code in [200, 201]:
-        # 保存に成功したら新しいshaを保管し、次回の最新ロードを強制するためにフラグを即リセット
         st.session_state["github_sha"] = res_put.json()["content"]["sha"]
         st.session_state["data_loaded_from_github"] = False 
     else:
@@ -204,7 +194,7 @@ def calculate_personal_stats(df_g, p_name):
         "月間着順回数": {r: len(df_m[df_m["着順"] == r]) for r in range(1, 5)},
         "年間対戦数": y_count,
         "年間平均": round(df_y["着順"].mean(), 2) if y_count > 0 else 0.0,
-        "年間トップ": round(len(df_y[df_y["公開画面確認用着順"] == 1 if "公開画面確認用着順" in df_y else df_y["着順"] == 1]) / y_count * 100, 1) if y_count > 0 else 0.0,
+        "年間トップ": round(len(df_y[df_y["着順"] == 1]) / y_count * 100, 1) if y_count > 0 else 0.0,
         "年間ラス": round(len(df_y[df_y["着順"] == 4]) / y_count * 100, 1) if y_count > 0 else 0.0,
         "年間着順回数": {r: len(df_y[df_y["着順"] == r]) for r in range(1, 5)},
     }
@@ -225,12 +215,14 @@ def get_personal_history(df_g, p_name):
 
 
 def generate_login_info(name):
-    """新規客用のID・PWを生成する"""
+    """新規客用のID・PWと、最初の1文字＋.の表示名を自動生成する"""
     import secrets
     import string
+    # 🌟 Web用表示名を「名前の最初の一文字 + .」にする修正
+    w_n = f"{name[0]}." if name else "新."
     rid = f"user_{secrets.randbelow(9000)+1000}"
     rpw = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
-    return f"{name}.", rid, rpw
+    return w_n, rid, rpw
 
 
 # --- データのロードと初期実行 ---
@@ -269,7 +261,7 @@ if menu == "スタッフ専用入力画面":
                             if p not in df_members["名前"].values:
                                 w_n, rid, rpw = generate_login_info(p)
                                 df_members = pd.concat([df_members, pd.DataFrame([{"名前":p,"Web用表示名":w_n,"ログインID":rid,"パスワード":rpw,"初期レート":1500.0,"現在のレート":1500.0}])], ignore_index=True)
-                                st.info(f"🆕 新規客: 【{p}】 ID:{rid} PW:{rpw}")
+                                st.info(f"🆕 新規客: 【{p}】 表示名:{w_n} ID:{rid} PW:{rpw}")
                         df_games = pd.concat([df_games, pd.DataFrame([{"試合日":g_dt.strftime("%Y-%m-%d"),"1位":p1,"2位":p2,"3位":p3,"4位":p4}])], ignore_index=True)
                         save_excel(df_games, df_members, df_logs)
                         st.success("保存しました！")
@@ -280,21 +272,45 @@ if menu == "スタッフ専用入力画面":
         with t2:
             st.subheader("対局データの確認・修正")
             edt_g = st.data_editor(df_games, num_rows="dynamic", use_container_width=True, key="editor_games")
-            if st.button("💾 对局データをシステム内に上書き保存"):
+            if st.button("💾 対局データをシステム内に上書き保存"):
                 save_excel(edt_g, df_members, df_logs)
                 st.success("対局データを上書き保存しました！")
                 st.session_state["data_loaded_from_github"] = False
                 st.rerun()
                 
         with t3:
-            st.subheader("👤 登録メンバーのID・パスワード確認と修正")
-            st.caption("新規登録者のIDやパスワードを忘れた場合は、ここからいつでも確認や再設定（変更）が可能です。")
-            edt_m = st.data_editor(df_members, num_rows="dynamic", use_container_width=True, key="editor_members")
+            st.subheader("👤 登録メンバーのID・パスワード確認と修正（削除対応）")
+            st.caption("不要になったメンバーは右端の「削除」にチェックを入れて保存ボタンを押すと、完全に消去できます。")
+            
+            # データエディタ用に「削除」チェックボックス列を一時的に追加
+            df_m_edit = df_members.copy()
+            if "削除" not in df_m_edit.columns:
+                df_m_edit["削除"] = False
+            
+            # 列の並び替えと編集設定
+            cols_order = ["削除", "名前", "Web用表示名", "ログインID", "パスワード", "初期レート", "現在のレート"]
+            df_m_edit = df_m_edit[cols_order]
+            
+            edt_m = st.data_editor(
+                df_m_edit, 
+                num_rows="fixed",  # 行の勝手な追加を防ぎ、削除フラグに集中
+                use_container_width=True, 
+                key="editor_members",
+                column_config={"削除": st.column_config.CheckboxColumn(help="チェックを入れた行が削除されます")}
+            )
+            
             if st.button("💾 メンバー情報をシステム内に上書き保存"):
-                save_excel(df_games, edt_m, df_logs)
-                st.success("メンバー情報を上書き保存しました！")
-                st.session_state["data_loaded_from_github"] = False
-                st.rerun()
+                # 🌟 「削除」にチェックが入っていないメンバーだけを残す
+                df_m_filtered = edt_m[edt_m["削除"] == False].drop(columns=["削除"])
+                
+                # 万が一全員削除しようとした場合のエラー防止
+                if df_m_filtered.empty:
+                    st.error("メンバーを全員削除することはできません。管理者などを1名以上残してください。")
+                else:
+                    save_excel(df_games, df_m_filtered, df_logs)
+                    st.success("メンバー情報を上書き保存しました！（削除も反映されました）")
+                    st.session_state["data_loaded_from_github"] = False
+                    st.rerun()
 else:
     if not st.session_state["logged_in"]:
         st.subheader("🔑 プレイヤーログイン")
