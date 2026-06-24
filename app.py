@@ -121,4 +121,319 @@ def save_excel(df_g, df_m, df_l):
         "content": content_b64,
     }
     if sha:
-        commit_data["sha"]
+        commit_data["sha"] = sha
+
+    res_put = github_api_request("PUT", url, data=commit_data)
+    if res_put.status_code in [200, 201]:
+        st.session_state["github_sha"] = res_put.json()["content"]["sha"]
+        st.session_state["data_loaded_from_github"] = False 
+    else:
+        st.error(f"GitHubへのデータ保存に失敗しました。ステータスコード: {res_put.status_code}")
+
+
+def calculate_all_ratings(df_g, df_m):
+    """過去の全対局からレーティングの推移を計算する"""
+    p_rt = {n: 1500.0 for n in df_m["名前"]}
+    rt_hist = {n: [1500.0] for n in df_m["名前"]}
+    if df_g.empty:
+        return p_rt, rt_hist
+
+    df_g_sorted = df_g.sort_values(by="試合日").copy()
+    for _, row in df_g_sorted.iterrows():
+        p_list = [row["1位"], row["2位"], row["3位"], row["4位"]]
+        for p in p_list:
+            if p not in p_rt:
+                p_rt[p], rt_hist[p] = 1500.0, [1500.0]
+        r = [p_rt[p] for p in p_list]
+        K, change = 32, {p: 0.0 for p in p_list}
+        for i in range(4):
+            for j in range(4):
+                if i != j:
+                    E_i = 1 / (1 + math.pow(10, (r[j] - r[i]) / 400))
+                    change[p_list[i]] += K * ((1.0 if i < j else 0.0) - E_i)
+        for p in p_list:
+            p_rt[p] += change[p]
+            rt_hist[p].append(p_rt[p])
+    return p_rt, rt_hist
+
+
+def calculate_personal_stats(df_g, p_name):
+    """個人の月間・年間成績を正確に計算する"""
+    default_stats = {
+        "月間対戦数": 0, "月間平均": 0.0, "月間トップ": 0.0, "月間ラス": 0.0, "月間着順回数": {1: 0, 2: 0, 3: 0, 4: 0},
+        "年間対戦数": 0, "年間平均": 0.0, "年間トップ": 0.0, "年間ラス": 0.0, "年間着順回数": {1: 0, 2: 0, 3: 0, 4: 0},
+    }
+    if df_g.empty: return default_stats
+    df_g_copy = df_g.copy()
+    df_g_copy["試合日"] = pd.to_datetime(df_g_copy["試合日"])
+    now = datetime.datetime.now()
+    melted = [df_g_copy[["試合日", f"{r}位"]].rename(columns={f"{r}位": "名前"}).assign(着順=r) for r in range(1, 5)]
+    df_all = pd.concat(melted, ignore_index=True)
+    df_p = df_all[df_all["名前"] == p_name]
+    if df_p.empty: return default_stats
+    df_m = df_p[(df_p["試合日"].dt.year == now.year) & (df_p["試合日"].dt.month == now.month)]
+    df_y = df_p[df_p["試合日"].dt.year == now.year]
+    m_count, y_count = len(df_m), len(df_y)
+    return {
+        "月間対戦数": m_count,
+        "月間平均": round(df_m["着順"].mean(), 2) if m_count > 0 else 0.0,
+        "月間トップ": round(len(df_m[df_m["着順"] == 1]) / m_count * 100, 1) if m_count > 0 else 0.0,
+        "月間ラス": round(len(df_m[df_m["着順"] == 4]) / m_count * 100, 1) if m_count > 0 else 0.0,
+        "月間着順回数": {r: len(df_m[df_m["着順"] == r]) for r in range(1, 5)},
+        "年間対戦数": y_count,
+        "年間平均": round(df_y["着順"].mean(), 2) if y_count > 0 else 0.0,
+        "年間トップ": round(len(df_y[df_y["着順"] == 1]) / y_count * 100, 1) if y_count > 0 else 0.0,
+        "年間ラス": round(len(df_y[df_y["着順"] == 4]) / y_count * 100, 1) if y_count > 0 else 0.0,
+        "年間着順回数": {r: len(df_y[df_y["着順"] == r]) for r in range(1, 5)},
+    }
+
+
+def get_personal_history(df_g, p_name):
+    """個人の過去の対局履歴を取得する"""
+    if df_g.empty: return pd.DataFrame()
+    rows = []
+    for _, row in df_g.iterrows():
+        p_list = [row["1位"], row["2位"], row["3位"], row["4位"]]
+        if p_name in p_list:
+            rows.append({
+                "対戦日": row["試合日"], "あなたの着順": f"{p_list.index(p_name)+1}着",
+                "1位": row["1位"], "2位": row["2位"], "3位": row["3位"], "4位": row["4位"],
+            })
+    return pd.DataFrame(rows).sort_values(by="対戦日", ascending=False) if rows else pd.DataFrame()
+
+
+def generate_login_info(name):
+    """新規客用のID・PWと、最初の1文字＋.の表示名を自動生成する"""
+    import secrets
+    import string
+    w_n = f"{name[0]}." if name else "新."
+    rid = f"user_{secrets.randbelow(9000)+1000}"
+    rpw = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
+    return w_n, rid, rpw
+
+
+# --- データのロードと初期実行 ---
+df_games, df_members, df_logs = load_data()
+player_ratings, rating_history = calculate_all_ratings(df_games, df_members)
+for n, v in player_ratings.items():
+    df_members.loc[df_members["名前"] == n, "現在のレート"] = round(v, 1)
+
+if "logged_in" not in st.session_state:
+    st.session_state.update({"logged_in": False, "user_name": ""})
+if st.session_state["cookies_initialized"] and not st.session_state["logged_in"]:
+    sid = st.session_state["controller"].get("saved_login_id")
+    spw = st.session_state["controller"].get("saved_login_pw")
+    if sid and spw:
+        user = df_members[(df_members["ログインID"] == sid) & (df_members["パスワード"].astype(str) == spw)]
+        if not user.empty:
+            st.session_state.update({"logged_in": True, "user_name": str(user["名前"].values[0])})
+
+menu = st.sidebar.radio("メニュー", ["お客様ページ", "スタッフ専用入力画面"])
+
+if menu == "スタッフ専用入力画面":
+    st.header("💻 スタッフ専用・対局結果管理")
+    if st.text_input("管理用パスワード", type="password") == "admin123":
+        st.success("認証されました。")
+        t1, t2, t3 = st.tabs(["📝 新規登録", "🗂️ 過去データ確認·修正", "👤 メンバーアカウント管理"])
+        
+        with t1:
+            with st.form("input_form", clear_on_submit=True):
+                g_dt = st.date_input("試合日", datetime.date.today())
+                p1, p2, p3, p4 = st.text_input("1位"), st.text_input("2位"), st.text_input("3位"), st.text_input("4位")
+                if st.form_submit_button("保存・確定"):
+                    if p1 and p2 and p3 and p4 and len({p1, p2, p3, p4}) == 4:
+                        for p in [p1, p2, p3, p4]:
+                            if p not in df_members["名前"].values:
+                                w_n, rid, rpw = generate_login_info(p)
+                                df_members = pd.concat([df_members, pd.DataFrame([{"名前":p,"Web用表示名":w_n,"ログインID":rid,"パスワード":rpw,"初期レート":1500.0,"現在のレート":1500.0}])], ignore_index=True)
+                                st.info(f"🆕 新規客: 【{p}】 表示名:{w_n} ID:{rid} PW:{rpw}")
+                        df_games = pd.concat([df_games, pd.DataFrame([{"試合日":g_dt.strftime("%Y-%m-%d"),"1位":p1,"2位":p2,"3位":p3,"4位":p4}])], ignore_index=True)
+                        save_excel(df_games, df_members, df_logs)
+                        st.success("保存しました！")
+                        st.session_state["data_loaded_from_github"] = False
+                        st.rerun()
+                    else: st.error("入力欄に不備があります。全員別々の名前を入力してください。")
+                    
+        with t2:
+            st.subheader("対局データの確認・修正")
+            edt_g = st.data_editor(df_games, num_rows="dynamic", use_container_width=True, key="editor_games")
+            if st.button("💾 対局データをシステム内に上書き保存"):
+                save_excel(edt_g, df_members, df_logs)
+                st.success("対局データを上書き保存しました！")
+                st.session_state["data_loaded_from_github"] = False
+                st.rerun()
+                
+        with t3:
+            st.subheader("👤 登録メンバーのID・パスワード確認と修正（削除対応）")
+            df_m_edit = df_members.copy()
+            if "削除" not in df_m_edit.columns: df_m_edit["削除"] = False
+            cols_order = ["削除", "名前", "Web用表示名", "ログインID", "パスワード", "初期レート", "現在のレート"]
+            df_m_edit = df_m_edit[cols_order]
+            edt_m = st.data_editor(df_m_edit, num_rows="fixed", use_container_width=True, key="editor_members", column_config={"削除": st.column_config.CheckboxColumn()})
+            if st.button("💾 メンバー情報をシステム内に上書き保存"):
+                df_m_filtered = edt_m[edt_m["削除"] == False].drop(columns=["削除"])
+                if df_m_filtered.empty: st.error("メンバーを全員削除することはできません。")
+                else:
+                    save_excel(df_games, df_m_filtered, df_logs)
+                    st.success("メンバー情報を上書き保存しました！")
+                    st.session_state["data_loaded_from_github"] = False
+                    st.rerun()
+else:
+    if not st.session_state["logged_in"]:
+        st.subheader("🔑 プレイヤーログイン")
+        uid = st.text_input("ログインID")
+        upw = st.text_input("パスワード", type="password")
+        rem = st.checkbox("ログイン情報を記憶する", value=True)
+        if st.button("ログイン") and uid and upw:
+            user = df_members[(df_members["ログインID"] == uid) & (df_members["パスワード"].astype(str) == upw)]
+            if not user.empty:
+                uname = str(user.iloc[0]["名前"])
+                st.session_state.update({"logged_in": True, "user_name": uname})
+                if rem and st.session_state["cookies_initialized"]:
+                    st.session_state["controller"].set("saved_login_id", uid)
+                    st.session_state["controller"].set("saved_login_pw", upw)
+                df_logs = pd.concat([df_logs, pd.DataFrame([{"閲覧日時": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "ログインID": uid, "名前": uname}])], ignore_index=True)
+                save_excel(df_games, df_members, df_logs)
+                st.success(f"ようこそ、{uname} さん！")
+                st.session_state["data_loaded_from_github"] = False
+                st.rerun()
+            else: st.error("IDまたはパスワードが違います。")
+    else:
+        st.sidebar.write(f"ログイン: {st.session_state['user_name']} さん")
+        if st.sidebar.button("ログアウト（記憶消去）"):
+            st.session_state.update({"logged_in": False, "user_name": ""})
+            if st.session_state["cookies_initialized"]:
+                st.session_state["controller"].remove("saved_login_id")
+                st.session_state["controller"].remove("saved_login_pw")
+            st.rerun()
+
+        tab1, tab2 = st.tabs(["📊 マイデータ", "🏆 総合ランキング"])
+        with tab1:
+            my_name = st.session_state["user_name"]
+            st.header(f"👤 {my_name} さんのマイページ")
+            p_stats = calculate_personal_stats(df_games, my_name)
+
+            my_rate_df = df_members[df_members["名前"] == my_name]
+            my_rt_val = my_rate_df["現在のレート"].values[0] if not my_rate_df.empty else 1500.0
+            st.metric(label="現在のレーティング", value=f"{my_rt_val} Rt")
+            st.header(f"🏆 現在の階級：{get_dan_name(my_rt_val)}")
+            st.write("---")
+
+            # 👥 対戦相手別の相性・対戦成績 (🌟空データ対策済)
+            st.subheader("👥 対戦相手別の相性・対戦成績")
+            other_members = [n for n in df_members["名前"].values if n != my_name and n != "管理者"]
+            
+            if df_games.empty:
+                st.info("対局データがまだ登録されていないため、相性分析は利用できません。スタッフ画面から試合結果を登録してください。")
+            elif not other_members:
+                st.info("対戦相手の候補がまだ登録されていません。")
+            else:
+                target_op = st.selectbox("対戦相手を選択してください", other_members)
+                
+                # 選択された相手と同卓している試合を抽出
+                opp_games = []
+                for _, row in df_games.iterrows():
+                    players = [row["1位"], row["2位"], row["3位"], row["4位"]]
+                    if my_name in players and target_op in players:
+                        opp_games.append({
+                            "試合日": row["試合日"],
+                            "私の着順": players.index(my_name) + 1,
+                            "相手の着順": players.index(target_op) + 1
+                        })
+                
+                if opp_games:
+                    df_opp = pd.DataFrame(opp_games)
+                    total_match = len(df_opp)
+                    my_win = len(df_opp[df_opp["私の着順"] < df_opp["相手の着順"]])
+                    opp_win = len(df_opp[df_opp["私の着順"] > df_opp["相手の着順"]])
+                    my_avg = round(df_opp["私の着順"].mean(), 2)
+                    opp_avg = round(df_opp["相手の着順"].mean(), 2)
+                    
+                    c1, c2, c3 = st.columns(3)
+                    with c1: st.metric("同卓回数", f"{total_match} 回")
+                    with c2: st.metric("あなたの上位回数 (勝)", f"{my_win} 回", f"勝率 {round(my_win/total_match*100, 1)}%")
+                    with c3: st.metric("相手の上位回数 (敗)", f"{opp_win} 回", f"敗率 {round(opp_win/total_match*100, 1)}%")
+                    
+                    st.write(f"💡 **同卓時の平均着順:** あなた: `{my_avg}着` / {target_op}さん: `{opp_avg}着`")
+                    if my_avg < opp_avg:
+                        st.success(f"📈 現在、{target_op}さんに対して勝ち越しています！(相性抜群)")
+                    elif my_avg > opp_avg:
+                        st.warning(f"📉 現在、{target_op}さんに対して押されています。次こそトップを！")
+                    else:
+                        st.info(f"🤝 現在、{target_op}さんとは完全に互角のライバル関係です！")
+                else:
+                    st.info(f"選択した {target_op} さんとの同卓対局データはまだありません。")
+            
+            st.write("---")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader("🌙 月間成績")
+                st.write(f"**平均着順:** {p_stats['月間平均']} 着\n\n**トップ率:** {p_stats['月間トップ']} %\n\n**ラス率:** {p_stats['月間ラス']} %")
+                m_rc = p_stats["月間着順回数"]
+                st.write(f"**着順内訳:** 1着:{m_rc[1]}回 / 2着:{m_rc[2]}回 / 3着:{m_rc[3]}回 / 4着:{m_rc[4]}回")
+                st.write(f"**対戦数:** {p_stats['月間対戦数']} / 30 戦")
+                if p_stats["月間対戦数"] < 30: st.progress(p_stats["月間対戦数"] / 30)
+                else: st.success("🎉 月間規定打数クリア！")
+            with col2:
+                st.subheader("☀️ 年間成績")
+                st.write(f"**平均着順:** {p_stats['年間平均']} 着\n\n**トップ率:** {p_stats['年間トップ']} %\n\n**ラス率:** {p_stats['年間ラス']} %")
+                y_rc = p_stats["年間着順回数"]
+                st.write(f"**着順内訳:** 1着:{y_rc[1]}回 / 2着:{y_rc[2]}回 / 3着:{y_rc[3]}回 / 4着:{y_rc[4]}回")
+                st.write(f"**対戦数:** {p_stats['年間対戦数']} / 360 戦")
+                if p_stats["年間対戦数"] < 360: st.progress(p_stats["年間対戦数"] / 360)
+                else: st.success("🎉 年間規定打数クリア！")
+
+            st.subheader("🗂️ 直近の対局履歴（対戦相手）")
+            df_hist = get_personal_history(df_games, my_name)
+            if not df_hist.empty: st.dataframe(df_hist, use_container_width=True)
+            else: st.info("対局履歴がありません。")
+
+            st.subheader("📊 着順内訳の割合（通算）")
+            if not df_games.empty:
+                df_g_copy = df_games.copy()
+                melted_all = [df_g_copy[[f"{r}位"]].rename(columns={f"{r}位": "名前"}).assign(着順=f"{r}着") for r in range(1, 5)]
+                df_all_flat = pd.concat(melted_all, ignore_index=True)
+                df_my_ranks = df_all_flat[df_all_flat["名前"] == my_name]
+                if not df_my_ranks.empty:
+                    rank_counts = df_my_ranks["着順"].value_counts().reset_index()
+                    rank_counts.columns = ["着順", "回数"]
+                    rank_counts["sort"] = rank_counts["着順"].str.get(0).astype(int)
+                    rank_counts = rank_counts.sort_values("sort")
+                    fig_pie = px.pie(rank_counts, values="回数", names="着順", hole=0.3, color="着順", color_discrete_map={"1着":"#1f77b4","2着":"#aec7e8","3着":"#ffbb78","4着":"#ff7f0e"})
+                    fig_pie.update_traces(textposition="inside", textinfo="percent+label", textfont_size=18, insidetextfont=dict(color="white", weight="bold"))
+                    st.plotly_chart(fig_pie, use_container_width=True)
+            else:
+                st.info("グラフを表示するための対局データがありません。")
+
+            st.subheader("📈 レーティング推移")
+            if my_name in rating_history and len(rating_history[my_name]) > 1:
+                df_chart = pd.DataFrame({"対戦回数": list(range(len(rating_history[my_name]))), "レーティング": rating_history[my_name]})
+                st.plotly_chart(px.line(df_chart, x="対戦回数", y="レーティング", title="Rt変動トレンド", markers=True), use_container_width=True)
+
+        with tab2:
+            st.header("店舗総合トップ10")
+            if not df_games.empty:
+                df_g_all = df_games.copy()
+                df_g_all["試合日"] = pd.to_datetime(df_g_all["試合日"])
+                now = datetime.datetime.now()
+                melted_all = [df_g_all[[f"{r}位"]].rename(columns={f"{r}位": "名前"}).assign(着順=r) for r in range(1, 5)]
+                df_all_flat = pd.concat(melted_all, ignore_index=True)
+                p_choice = st.radio("期間", ["月間（動的規定打数）", "年間（360戦以上）"])
+                if "月間" in p_choice:
+                    df_f = df_all_flat[(df_all_flat["試合日"].dt.year == now.year) & (df_all_flat["試合日"].dt.month == now.month)]
+                    min_g = now.day if now.day <= 25 else 30
+                else:
+                    df_f = df_all_flat[df_all_flat["試合日"].dt.year == now.year]
+                    min_g = 360
+                if not df_f.empty:
+                    stats = df_f.groupby("名前")["着順"].agg(対戦数="count", average_rank="mean").reset_index().rename(columns={"average_rank": "平均着順"})
+                    ranking = stats[(stats["対戦数"] >= min_g) & (stats["平均着順"] <= 2.5)]
+                    if not ranking.empty:
+                        rk = ranking.merge(df_members[["名前", "Web用表示名", "現在のレート"]], on="名前")
+                        rk["現在の段位"] = rk["現在のレート"].apply(lambda x: get_dan_name(x))
+                        rk_sorted = rk.sort_values(by="平均着順").head(10).copy()
+                        rk_sorted.insert(0, "順位", range(1, len(rk_sorted) + 1))
+                        st.dataframe(rk_sorted[["順位", "Web用表示名", "現在の段位", "平均着順", "対戦数", "現在のレート"]], use_container_width=True)
+            else:
+                st.info("対局データがありません。")
