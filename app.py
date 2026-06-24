@@ -184,7 +184,7 @@ def calculate_personal_stats(df_g, p_name):
         "年間平均": round(df_y["着順"].mean(), 2) if y_count > 0 else 0.0,
         "年間トップ": round(len(df_y[df_y["着順"] == 1]) / y_count * 100, 1) if y_count > 0 else 0.0,
         "年間ラス": round(len(df_y[df_y["着順"] == 4]) / y_count * 100, 1) if y_count > 0 else 0.0,
-        "年間着順回数": {r: len(df_y[df_y["着順"] == r]) for r in range(1, 5)},
+        "年間着順回数": {r: len(df_y[df_y["画像"] == r]) if "画像" in df_y.columns else len(df_y[df_y["着順"] == r]) for r in range(1, 5)},
     }
 
 
@@ -224,7 +224,7 @@ if st.session_state["cookies_initialized"] and not st.session_state["logged_in"]
     sid = st.session_state["controller"].get("saved_login_id")
     spw = st.session_state["controller"].get("saved_login_pw")
     if sid and spw:
-        user = df_members[(df_members["ログインID"] == sid) & (df_members["パスワード"].astype(str) == upw)]
+        user = df_members[(df_members["ログインID"] == sid) & (df_members["パスワード"].astype(str) == spw)]
         if not user.empty:
             st.session_state.update({"logged_in": True, "user_name": str(user["名前"].values[0])})
 
@@ -363,8 +363,8 @@ else:
 
             st.write("---")
 
-            # 👥 【移動位置】対戦相手別の相性・対戦成績
-            st.subheader("👥 対戦相手別の相性・対戦成績")
+            # 👥 【ご指定位置】対戦相手別の相性・対戦成績
+            st.subheader("👥 对戦相手別の相性・対戦成績")
             other_members = [n for n in df_members["名前"].values if n != my_name and n != "管理者"]
             
             if df_games.empty:
@@ -374,7 +374,6 @@ else:
             else:
                 target_op = st.selectbox("対戦相手を選択してください", other_members)
                 
-                # 選択された相手と同卓している試合を抽出
                 opp_games = []
                 for _, row in df_games.iterrows():
                     players = [row["1位"], row["2位"], row["3位"], row["4位"]]
@@ -408,7 +407,7 @@ else:
                 else:
                     st.info(f"選択した {target_op} さんとの同卓対局データはまだありません。")
 
-            st.write("##") # 少しだけ間隔をあけるためのスペース
+            st.write("##")
 
             # 🗂️ 直近の対局履歴（対戦相手）
             st.subheader("🗂️ 直近の対局履歴（対戦相手）")
@@ -418,6 +417,7 @@ else:
 
         with tab2:
             st.header("店舗総合トップ10")
+            # 🌟【完全対策】タブ2の空データ時のエラーを修正
             if not df_games.empty:
                 df_g_all = df_games.copy()
                 df_g_all["試合日"] = pd.to_datetime(df_g_all["試合日"])
@@ -440,5 +440,9 @@ else:
                         rk_sorted = rk.sort_values(by="平均着順").head(10).copy()
                         rk_sorted.insert(0, "順位", range(1, len(rk_sorted) + 1))
                         st.dataframe(rk_sorted[["順位", "Web用表示名", "現在の段位", "平均着順", "対戦数", "現在のレート"]], use_container_width=True)
+                    else:
+                        st.info("規定打数を満たしているプレイヤーがまだいません。")
+                else:
+                    st.info("該当期間の対局データがありません。")
             else:
                 st.info("対局データがありません。")
