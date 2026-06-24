@@ -224,7 +224,7 @@ if st.session_state["cookies_initialized"] and not st.session_state["logged_in"]
     sid = st.session_state["controller"].get("saved_login_id")
     spw = st.session_state["controller"].get("saved_login_pw")
     if sid and spw:
-        user = df_members[(df_members["ログインID"] == sid) & (df_members["パスワード"].astype(str) == spw)]
+        user = df_members[(df_members["ログインID"] == sid) & (df_members["パスワード"].astype(str) == upw)]
         if not user.empty:
             st.session_state.update({"logged_in": True, "user_name": str(user["名前"].values[0])})
 
@@ -319,7 +319,51 @@ else:
             st.header(f"🏆 現在の階級：{get_dan_name(my_rt_val)}")
             st.write("---")
 
-            # 👥 対戦相手別の相性・対戦成績 (🌟空データ対策済)
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader("🌙 月間成績")
+                st.write(f"**平均着順:** {p_stats['月間平均']} 着\n\n**トップ率:** {p_stats['月間トップ']} %\n\n**ラス率:** {p_stats['月間ラス']} %")
+                m_rc = p_stats["月間着順回数"]
+                st.write(f"**着順内訳:** 1着:{m_rc[1]}回 / 2着:{m_rc[2]}回 / 3着:{m_rc[3]}回 / 4着:{m_rc[4]}回")
+                st.write(f"**対戦数:** {p_stats['月間対戦数']} / 30 戦")
+                if p_stats["月間対戦数"] < 30: st.progress(p_stats["月間対戦数"] / 30)
+                else: st.success("🎉 月間規定打数クリア！")
+            with col2:
+                st.subheader("☀️ 年間成績")
+                st.write(f"**平均着順:** {p_stats['年間平均']} 着\n\n**トップ率:** {p_stats['年間トップ']} %\n\n**ラス率:** {p_stats['年間ラス']} %")
+                y_rc = p_stats["年間着順回数"]
+                st.write(f"**着順内訳:** 1着:{y_rc[1]}回 / 2着:{y_rc[2]}回 / 3着:{y_rc[3]}回 / 4着:{y_rc[4]}回")
+                st.write(f"**対戦数:** {p_stats['年間対戦数']} / 360 戦")
+                if p_stats["年間対戦数"] < 360: st.progress(p_stats["年間対戦数"] / 360)
+                else: st.success("🎉 年間規定打数クリア！")
+
+            st.write("---")
+
+            st.subheader("📊 着順内訳の割合（通算）")
+            if not df_games.empty:
+                df_g_copy = df_games.copy()
+                melted_all = [df_g_copy[[f"{r}位"]].rename(columns={f"{r}位": "名前"}).assign(着順=f"{r}着") for r in range(1, 5)]
+                df_all_flat = pd.concat(melted_all, ignore_index=True)
+                df_my_ranks = df_all_flat[df_all_flat["名前"] == my_name]
+                if not df_my_ranks.empty:
+                    rank_counts = df_my_ranks["着順"].value_counts().reset_index()
+                    rank_counts.columns = ["着順", "回数"]
+                    rank_counts["sort"] = rank_counts["着順"].str.get(0).astype(int)
+                    rank_counts = rank_counts.sort_values("sort")
+                    fig_pie = px.pie(rank_counts, values="回数", names="着順", hole=0.3, color="着順", color_discrete_map={"1着":"#1f77b4","2着":"#aec7e8","3着":"#ffbb78","4着":"#ff7f0e"})
+                    fig_pie.update_traces(textposition="inside", textinfo="percent+label", textfont_size=18, insidetextfont=dict(color="white", weight="bold"))
+                    st.plotly_chart(fig_pie, use_container_width=True)
+            else:
+                st.info("グラフを表示するための対局データがありません。")
+
+            st.subheader("📈 レーティング推移")
+            if my_name in rating_history and len(rating_history[my_name]) > 1:
+                df_chart = pd.DataFrame({"対戦回数": list(range(len(rating_history[my_name]))), "レーティング": rating_history[my_name]})
+                st.plotly_chart(px.line(df_chart, x="対戦回数", y="レーティング", title="Rt変動トレンド", markers=True), use_container_width=True)
+
+            st.write("---")
+
+            # 👥 【移動位置】対戦相手別の相性・対戦成績
             st.subheader("👥 対戦相手別の相性・対戦成績")
             other_members = [n for n in df_members["名前"].values if n != my_name and n != "管理者"]
             
@@ -363,53 +407,14 @@ else:
                         st.info(f"🤝 現在、{target_op}さんとは完全に互角のライバル関係です！")
                 else:
                     st.info(f"選択した {target_op} さんとの同卓対局データはまだありません。")
-            
-            st.write("---")
 
-            col1, col2 = st.columns(2)
-            with col1:
-                st.subheader("🌙 月間成績")
-                st.write(f"**平均着順:** {p_stats['月間平均']} 着\n\n**トップ率:** {p_stats['月間トップ']} %\n\n**ラス率:** {p_stats['月間ラス']} %")
-                m_rc = p_stats["月間着順回数"]
-                st.write(f"**着順内訳:** 1着:{m_rc[1]}回 / 2着:{m_rc[2]}回 / 3着:{m_rc[3]}回 / 4着:{m_rc[4]}回")
-                st.write(f"**対戦数:** {p_stats['月間対戦数']} / 30 戦")
-                if p_stats["月間対戦数"] < 30: st.progress(p_stats["月間対戦数"] / 30)
-                else: st.success("🎉 月間規定打数クリア！")
-            with col2:
-                st.subheader("☀️ 年間成績")
-                st.write(f"**平均着順:** {p_stats['年間平均']} 着\n\n**トップ率:** {p_stats['年間トップ']} %\n\n**ラス率:** {p_stats['年間ラス']} %")
-                y_rc = p_stats["年間着順回数"]
-                st.write(f"**着順内訳:** 1着:{y_rc[1]}回 / 2着:{y_rc[2]}回 / 3着:{y_rc[3]}回 / 4着:{y_rc[4]}回")
-                st.write(f"**対戦数:** {p_stats['年間対戦数']} / 360 戦")
-                if p_stats["年間対戦数"] < 360: st.progress(p_stats["年間対戦数"] / 360)
-                else: st.success("🎉 年間規定打数クリア！")
+            st.write("##") # 少しだけ間隔をあけるためのスペース
 
+            # 🗂️ 直近の対局履歴（対戦相手）
             st.subheader("🗂️ 直近の対局履歴（対戦相手）")
             df_hist = get_personal_history(df_games, my_name)
             if not df_hist.empty: st.dataframe(df_hist, use_container_width=True)
             else: st.info("対局履歴がありません。")
-
-            st.subheader("📊 着順内訳の割合（通算）")
-            if not df_games.empty:
-                df_g_copy = df_games.copy()
-                melted_all = [df_g_copy[[f"{r}位"]].rename(columns={f"{r}位": "名前"}).assign(着順=f"{r}着") for r in range(1, 5)]
-                df_all_flat = pd.concat(melted_all, ignore_index=True)
-                df_my_ranks = df_all_flat[df_all_flat["名前"] == my_name]
-                if not df_my_ranks.empty:
-                    rank_counts = df_my_ranks["着順"].value_counts().reset_index()
-                    rank_counts.columns = ["着順", "回数"]
-                    rank_counts["sort"] = rank_counts["着順"].str.get(0).astype(int)
-                    rank_counts = rank_counts.sort_values("sort")
-                    fig_pie = px.pie(rank_counts, values="回数", names="着順", hole=0.3, color="着順", color_discrete_map={"1着":"#1f77b4","2着":"#aec7e8","3着":"#ffbb78","4着":"#ff7f0e"})
-                    fig_pie.update_traces(textposition="inside", textinfo="percent+label", textfont_size=18, insidetextfont=dict(color="white", weight="bold"))
-                    st.plotly_chart(fig_pie, use_container_width=True)
-            else:
-                st.info("グラフを表示するための対局データがありません。")
-
-            st.subheader("📈 レーティング推移")
-            if my_name in rating_history and len(rating_history[my_name]) > 1:
-                df_chart = pd.DataFrame({"対戦回数": list(range(len(rating_history[my_name]))), "レーティング": rating_history[my_name]})
-                st.plotly_chart(px.line(df_chart, x="対戦回数", y="レーティング", title="Rt変動トレンド", markers=True), use_container_width=True)
 
         with tab2:
             st.header("店舗総合トップ10")
