@@ -58,10 +58,18 @@ def load_data():
     # 1. メモリ上の器（State）がなければ初期値を作成
     if "db_games" not in st.session_state:
         st.session_state["db_games"] = pd.DataFrame(columns=["試合日", "1位", "2位", "3位", "4位"])
+    
     if "db_members" not in st.session_state:
+        # 🌟 エラー防止のため、システム管理用のダミーアカウントを1件だけ登録しておきます
         st.session_state["db_members"] = pd.DataFrame([{
-            "名前": "くま", "Web用表示名": "くま.", "ログインID": "user_1234", "パスワード": "12345678", "初期レート": 1500.0, "現在のレート": 1500.0
+            "名前": "管理者", 
+            "Web用表示名": "Admin", 
+            "ログインID": "admin001",   # ログイン用のID
+            "パスワード": "password",   # ログイン用のパスワード
+            "初期レート": 1500.0, 
+            "現在のレート": 1500.0
         }])
+        
     if "db_logs" not in st.session_state:
         st.session_state["db_logs"] = pd.DataFrame(columns=["閲覧日時", "ログインID", "名前"])
 
