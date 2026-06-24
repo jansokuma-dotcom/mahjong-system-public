@@ -165,6 +165,7 @@ def calculate_personal_stats(df_g, p_name):
     }
     if df_g.empty: return default_stats
     df_g_copy = df_g.copy()
+    if "試合日" not in df_g_copy.columns: return default_stats
     df_g_copy["試合日"] = pd.to_datetime(df_g_copy["試合日"])
     now = datetime.datetime.now()
     melted = [df_g_copy[["試合日", f"{r}位"]].rename(columns={f"{r}位": "名前"}).assign(着順=r) for r in range(1, 5)]
@@ -184,7 +185,7 @@ def calculate_personal_stats(df_g, p_name):
         "年間平均": round(df_y["着順"].mean(), 2) if y_count > 0 else 0.0,
         "年間トップ": round(len(df_y[df_y["着順"] == 1]) / y_count * 100, 1) if y_count > 0 else 0.0,
         "年間ラス": round(len(df_y[df_y["着順"] == 4]) / y_count * 100, 1) if y_count > 0 else 0.0,
-        "年間着順回数": {r: len(df_y[df_y["画像"] == r]) if "画像" in df_y.columns else len(df_y[df_y["着順"] == r]) for r in range(1, 5)},
+        "年間着順回数": {r: len(df_y[df_y["着順"] == r]) for r in range(1, 5)},
     }
 
 
@@ -193,6 +194,7 @@ def get_personal_history(df_g, p_name):
     if df_g.empty: return pd.DataFrame()
     rows = []
     for _, row in df_g.iterrows():
+        if "1位" not in row or "試合日" not in row: continue
         p_list = [row["1位"], row["2位"], row["3位"], row["4位"]]
         if p_name in p_list:
             rows.append({
@@ -257,7 +259,7 @@ if menu == "スタッフ専用入力画面":
         with t2:
             st.subheader("対局データの確認・修正")
             edt_g = st.data_editor(df_games, num_rows="dynamic", use_container_width=True, key="editor_games")
-            if st.button("💾 対局データをシステム内に上書き保存"):
+            if st.button("💾 对局データをシステム内に上書き保存"):
                 save_excel(edt_g, df_members, df_logs)
                 st.success("対局データを上書き保存しました！")
                 st.session_state["data_loaded_from_github"] = False
@@ -340,7 +342,7 @@ else:
             st.write("---")
 
             st.subheader("📊 着順内訳の割合（通算）")
-            if not df_games.empty:
+            if not df_games.empty and "1位" in df_games.columns:
                 df_g_copy = df_games.copy()
                 melted_all = [df_g_copy[[f"{r}位"]].rename(columns={f"{r}位": "名前"}).assign(着順=f"{r}着") for r in range(1, 5)]
                 df_all_flat = pd.concat(melted_all, ignore_index=True)
@@ -363,8 +365,8 @@ else:
 
             st.write("---")
 
-            # 👥 【ご指定位置】対戦相手別の相性・対戦成績
-            st.subheader("👥 对戦相手別の相性・対戦成績")
+            # 👥 対戦相手別の相性・対戦成績
+            st.subheader("👥 対戦相手別の相性・対戦成績")
             other_members = [n for n in df_members["名前"].values if n != my_name and n != "管理者"]
             
             if df_games.empty:
@@ -376,6 +378,7 @@ else:
                 
                 opp_games = []
                 for _, row in df_games.iterrows():
+                    if "1位" not in row: continue
                     players = [row["1位"], row["2位"], row["3位"], row["4位"]]
                     if my_name in players and target_op in players:
                         opp_games.append({
@@ -417,32 +420,39 @@ else:
 
         with tab2:
             st.header("店舗総合トップ10")
-            # 🌟【完全対策】タブ2の空データ時のエラーを修正
-            if not df_games.empty:
+            # 🌟【完全対策】df_gamesが空ではなく、かつ「試合日」の列が存在することを確認
+            if not df_games.empty and "1位" in df_games.columns:
                 df_g_all = df_games.copy()
-                df_g_all["試合日"] = pd.to_datetime(df_g_all["試合日"])
-                now = datetime.datetime.now()
                 melted_all = [df_g_all[[f"{r}位"]].rename(columns={f"{r}位": "名前"}).assign(着順=r) for r in range(1, 5)]
                 df_all_flat = pd.concat(melted_all, ignore_index=True)
-                p_choice = st.radio("期間", ["月間（動的規定打数）", "年間（360戦以上）"])
-                if "月間" in p_choice:
-                    df_f = df_all_flat[(df_all_flat["試合日"].dt.year == now.year) & (df_all_flat["試合日"].dt.month == now.month)]
-                    min_g = now.day if now.day <= 25 else 30
-                else:
-                    df_f = df_all_flat[df_all_flat["試合日"].dt.year == now.year]
-                    min_g = 360
-                if not df_f.empty:
-                    stats = df_f.groupby("名前")["着順"].agg(対戦数="count", average_rank="mean").reset_index().rename(columns={"average_rank": "平均着順"})
-                    ranking = stats[(stats["対戦数"] >= min_g) & (stats["平均着順"] <= 2.5)]
-                    if not ranking.empty:
-                        rk = ranking.merge(df_members[["名前", "Web用表示名", "現在のレート"]], on="名前")
-                        rk["現在の段位"] = rk["現在のレート"].apply(lambda x: get_dan_name(x))
-                        rk_sorted = rk.sort_values(by="平均着順").head(10).copy()
-                        rk_sorted.insert(0, "順位", range(1, len(rk_sorted) + 1))
-                        st.dataframe(rk_sorted[["順位", "Web用表示名", "現在の段位", "平均着順", "対戦数", "現在のレート"]], use_container_width=True)
+                
+                # 🌟 df_all_flatの中に「試合日」の列が正しく結合されている場合のみ日付集計を行う
+                if "試合日" in df_all_flat.columns and not df_all_flat.empty:
+                    df_all_flat["試合日"] = pd.to_datetime(df_all_flat["試合日"])
+                    now = datetime.datetime.now()
+                    p_choice = st.radio("期間", ["月間（動的規定打数）", "年間（360戦以上）"])
+                    
+                    if "月間" in p_choice:
+                        df_f = df_all_flat[(df_all_flat["試合日"].dt.year == now.year) & (df_all_flat["試合日"].dt.month == now.month)]
+                        min_g = now.day if now.day <= 25 else 30
                     else:
-                        st.info("規定打数を満たしているプレイヤーがまだいません。")
+                        df_f = df_all_flat[df_all_flat["試合日"].dt.year == now.year]
+                        min_g = 360
+                        
+                    if not df_f.empty:
+                        stats = df_f.groupby("名前")["着順"].agg(対戦数="count", average_rank="mean").reset_index().rename(columns={"average_rank": "平均着順"})
+                        ranking = stats[(stats["対戦数"] >= min_g) & (stats["平均着順"] <= 2.5)]
+                        if not ranking.empty:
+                            rk = ranking.merge(df_members[["名前", "Web用表示名", "現在のレート"]], on="名前")
+                            rk["現在の段位"] = rk["現在のレート"].apply(lambda x: get_dan_name(x))
+                            rk_sorted = rk.sort_values(by="平均着順").head(10).copy()
+                            rk_sorted.insert(0, "順位", range(1, len(rk_sorted) + 1))
+                            st.dataframe(rk_sorted[["順位", "Web用表示名", "現在の段位", "平均着順", "対戦数", "現在のレート"]], use_container_width=True)
+                        else:
+                            st.info("規定打数を満たしているプレイヤーがまだいません。")
+                    else:
+                        st.info("該当期間の対局データがありません。")
                 else:
-                    st.info("該当期間の対局データがありません。")
+                    st.info("対局データ（試合日）が正常に取得できませんでした。")
             else:
                 st.info("対局データがありません。")
